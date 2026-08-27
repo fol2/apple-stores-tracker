@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { convertBetween, formatIn, formatLocal } from '../../shared/convert'
 import type { MarketPrice } from '../../shared/convert'
-import { matchRefurb, refurbCategoryFor } from '../../shared/secondhand'
+import { refurbCategoryFor, secondHandFor } from '../../shared/secondhand'
+import type { SecondHandMatch } from '../../shared/secondhand'
 import type { FxRates, Offer, RefurbListing } from '../../shared/types'
 
 interface Props {
@@ -63,18 +64,18 @@ export function SecondHand({
   const priced = rows.filter((r) => r.displayAmount !== null && !r.isEducation)
   const [againstId, setAgainstId] = useState<string | null>(null)
 
-  const match = useMemo(
-    () => (offer ? matchRefurb(offer, listings) : null),
+  const { thisGeneration, earlierGeneration } = useMemo(
+    () =>
+      offer ? secondHandFor(offer, listings) : { thisGeneration: null, earlierGeneration: null },
     [offer, listings],
   )
 
   const against = priced.find((r) => r.market.id === againstId) ?? priced[0]
-  const inDisplay = (amount: number) => convertBetween(amount, match!.currency, currency, fx)
 
   const category = refurbCategoryFor(familyId)
   const gridFailed = category !== null && failedCategories.includes(category)
 
-  if (!offer || !match) {
+  if (!offer || (!thisGeneration && !earlierGeneration)) {
     return (
       <section className="mt-12">
         <Heading readAt={readAt} />
@@ -124,7 +125,85 @@ export function SecondHand({
     )
   }
 
+
+  return (
+    <section className="mt-12">
+      <Heading readAt={readAt} />
+
+      {gridFailed && (
+        <p className="mt-4 rounded border border-high/40 bg-high/[0.07] px-3 py-2 text-sm">
+          Apple's refurbished {category} listings could not be read on the last run, so these are
+          carried over from the one before. Some may already have sold.
+        </p>
+      )}
+
+      {thisGeneration && (
+        <Generation
+          match={thisGeneration}
+          against={against}
+          currency={currency}
+          fx={fx}
+        />
+      )}
+
+      {/* Shown alongside, not instead. A machine on sale now has barely been
+          resold, so last year's model is usually the only one that exists
+          used — and when both exist, the choice between them is the decision
+          this page is for. */}
+      {earlierGeneration && (
+        <Generation
+          match={earlierGeneration}
+          against={against}
+          currency={currency}
+          fx={fx}
+          heading={thisGeneration ? 'Or the generation before' : 'The generation before'}
+        />
+      )}
+
+      <label className="mt-8 flex flex-wrap items-center gap-2 text-sm">
+        <span className="eyebrow">Compared with new in</span>
+        <select
+          value={against?.market.id ?? ''}
+          onChange={(e) => setAgainstId(e.target.value)}
+          className="rounded border border-rule bg-paper px-2 py-1 text-sm"
+        >
+          {priced.map((row, index) => (
+            <option key={row.market.id} value={row.market.id}>
+              {row.market.flag} {row.market.name} · {formatIn(row.displayAmount!, currency)}
+              {index === 0 ? ' — cheapest' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <p className="mt-6 text-xs leading-relaxed text-soft">
+        Apple's refurbished units are returned or repaired machines that Apple has restored and
+        tested. They carry the same one-year warranty as new and are sold only in the market that
+        lists them — these are United Kingdom listings, so the comparison above is what a UK buyer
+        would choose between.
+      </p>
+    </section>
+  )
+}
+
+interface GenerationProps {
+  match: SecondHandMatch
+  against: MarketPrice | undefined
+  currency: string
+  fx: FxRates
+  heading?: string
+}
+
+/**
+ * One generation's units, and the gap between them and a new machine.
+ *
+ * Rendered once per generation Apple has, so the two sit side by side under
+ * the same comparison market rather than one replacing the other.
+ */
+function Generation({ match, against, currency, fx, heading }: GenerationProps) {
+  const inDisplay = (amount: number) => convertBetween(amount, match.currency, currency, fx)
   const earlier = match.basis === 'earlier-generation'
+
   const low = inDisplay(match.low)
   const high = inDisplay(match.high)
   const newPrice = against?.displayAmount ?? null
@@ -137,10 +216,10 @@ export function SecondHand({
   const dearer = fraction > 1
 
   return (
-    <section className="mt-12">
-      <Heading readAt={readAt} />
+    <>
+      {heading && <h3 className="eyebrow mt-10">{heading}</h3>}
 
-      <div className="mt-6 rounded-lg border border-rule bg-raised p-6 sm:p-8">
+      <div className="mt-4 rounded-lg border border-rule bg-raised p-6 sm:p-8">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <span className="font-mono text-4xl font-bold tracking-[-0.06em] sm:text-5xl">
             {low !== null ? formatIn(low, currency) : '—'}
@@ -153,9 +232,9 @@ export function SecondHand({
               ? 'one unit in stock'
               : `${match.listings.length} units in stock`}
           </span>
-          {earlier && (
-            <span className="rounded-full border border-high/50 bg-high/10 px-2 py-0.5 text-xs font-semibold text-high">
-              previous generation
+          {earlier && match.listings[0] && (
+            <span className="rounded-full border border-rule px-2 py-0.5 text-xs text-soft">
+              {match.listings[0].title.replace(/^Refurbished /, '').split(/\s+(?:Wi-Fi|GPS|\d+GB|\d+TB)/)[0]}
             </span>
           )}
         </div>
@@ -198,14 +277,13 @@ export function SecondHand({
                   {formatIn(Math.abs(gap ?? 0), currency)} more
                 </span>
               )}{' '}
-              than new in {against.market.flag} {against.market.name}
+              than new in {against?.market.flag} {against?.market.name}
               {earlier ? (
                 <>
                   {' '}
-                  — but this is the {familyName} Apple sold before this one. It has none of
-                  the current generation refurbished, which is normal: Apple discontinues a
-                  model the day it announces its replacement, and a returned unit takes months
-                  to come back. The specification below is matched; the generation is not.
+                  — for the model Apple sold before this one, at this specification. A machine
+                  on sale now has barely been resold, so the generation before is usually the
+                  one that exists second-hand.
                 </>
               ) : match.exact ? (
                 ', for the same configuration.'
@@ -241,28 +319,6 @@ export function SecondHand({
           </p>
         )}
 
-        {gridFailed && (
-          <p className="mt-4 rounded border border-high/40 bg-high/[0.07] px-3 py-2 text-sm">
-            Apple's refurbished {category} listings could not be read on the last run, so these
-            are carried over from the one before. Some may already have sold.
-          </p>
-        )}
-
-        <label className="mt-6 flex flex-wrap items-center gap-2 text-sm">
-          <span className="eyebrow">Compared with new in</span>
-          <select
-            value={against?.market.id ?? ''}
-            onChange={(e) => setAgainstId(e.target.value)}
-            className="rounded border border-rule bg-paper px-2 py-1 text-sm"
-          >
-            {priced.map((row, index) => (
-              <option key={row.market.id} value={row.market.id}>
-                {row.market.flag} {row.market.name} · {formatIn(row.displayAmount!, currency)}
-                {index === 0 ? ' — cheapest' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {/* One row per machine, because that is what is actually for sale. */}
@@ -315,14 +371,7 @@ export function SecondHand({
           })}
         </tbody>
       </table>
-
-      <p className="mt-4 text-xs leading-relaxed text-soft">
-        Apple's refurbished units are returned or repaired machines that Apple has restored and
-        tested. They carry the same one-year warranty as new and are sold only in the market
-        that lists them — these are United Kingdom listings, so the comparison above is what a
-        UK buyer would choose between{match.exact ? '' : ', spec differences aside'}.
-      </p>
-    </section>
+    </>
   )
 }
 

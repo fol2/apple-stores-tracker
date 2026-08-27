@@ -103,12 +103,22 @@ every capacity, one of which costs a thousand pounds more than the new machine i
 next to. The page shows the gap either way and says plainly when the two prices are not
 the same machine.
 
-Apple discontinues a model the day it announces its replacement, so the refurbished store
-routinely holds nothing at all for what is currently on sale. When that happens the tab
-falls back to the nearest earlier generation at the same specification, labelled as such —
-a refurbished iPhone 15 against a new iPhone 17, not quietly presented as one. The fallback
-only runs when nothing current matched, and a unit is only offered if it can prove it is
-behind the configuration by Apple's own numbering, so the label is never a guess.
+The tab answers two questions, not one with a fallback: what this machine costs used, and
+what the one before it costs. The second is usually the only one with an answer. Apple
+discontinues a model the day it announces its replacement and a returned unit takes months
+to come back, so a machine on sale now has barely been resold — today Apple has no
+refurbished iPhone 17 and eighteen iPhone 15s.
+
+A unit is only offered as the earlier generation if it can prove it is behind the
+configuration by Apple's own numbering, either the grid token (`iphone15` against family
+`iphone-17`) or the chip (M4 against M6), so the label is never a guess and the search can
+never reach forward. Only the nearest generation is shown: Apple stocks 15s alongside 16s,
+and listing both under one heading would put two machines behind one price range.
+
+That proof needs a generation on both sides, which iPads and Watches do not have — nothing
+in Apple's catalogue or ours says which generation the *new* iPad Pro is. Those families
+show one block, with each unit's own release year and title, rather than a comparison the
+data cannot support.
 
 Education prices come from Apple's parallel `/<market>-edu` store. Only one market's
 education price can apply to any one buyer, since you can only be a student in one
