@@ -102,6 +102,24 @@ function Prices() {
   }
 
   const family = data.families.find((f) => f.id === familyId)
+
+  /**
+   * A picker that visibly does nothing is worse than one that is absent. When
+   * a market is claimed but no education row appears, say which of the two
+   * reasons applies rather than leaving the reader to wonder whether they
+   * mis-clicked.
+   */
+  const educationNote = (() => {
+    if (!educationMarketId) return null
+    if (comparison.rows.some((r) => r.isEducation)) return null
+    const collected = data.offers.some((o) => o.store === 'education')
+    if (!collected) return 'Education prices have not been collected yet. They appear after the next full run.'
+    const marketHasAny = data.offers.some(
+      (o) => o.store === 'education' && o.marketId === educationMarketId,
+    )
+    if (!marketHasAny) return 'No education prices collected for this market yet.'
+    return 'Apple has no education price for this product.'
+  })()
   const cheapest = comparison.cheapest
   const home = comparison.rows.find((r) => r.market.id === HOME_MARKET)
   const saving =
@@ -147,6 +165,10 @@ function Prices() {
             educationMarketId={educationMarketId}
             onChange={setEducationMarketId}
           />
+
+          {educationNote && (
+            <p className="w-full text-xs text-soft sm:w-auto">{educationNote}</p>
+          )}
         </div>
 
         <SpecPicker dimensions={dimensions} selected={selectionOf(resolved)} onChange={chooseSpec} />
