@@ -1,7 +1,7 @@
 import { extractJsonAfter } from './apple'
 import { storeOrigin, type Market } from '../shared/markets'
-import type { RefurbListing } from '../shared/types'
-import { REFURB_CATEGORIES, type RefurbCategory } from '../shared/secondhand'
+import { REFURB_CATEGORIES, type RefurbCategory, type RefurbListing } from '../shared/types'
+
 import { get, type RequestBudget } from './sweep'
 
 /**
@@ -72,7 +72,7 @@ export interface RefurbCollection {
   marketId: string
   collectedAt: string
   listings: RefurbListing[]
-  errors: { category: string; message: string }[]
+  errors: { category: RefurbCategory; message: string }[]
 }
 
 /**
@@ -83,7 +83,7 @@ export interface RefurbCollection {
  */
 export async function collectRefurb(market: Market, budget: RequestBudget): Promise<RefurbCollection> {
   const listings: RefurbListing[] = []
-  const errors: { category: string; message: string }[] = []
+  const errors: { category: RefurbCategory; message: string }[] = []
 
   for (const category of REFURB_CATEGORIES) {
     const url = refurbUrl(market, category)

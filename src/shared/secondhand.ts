@@ -1,14 +1,4 @@
-import type { Offer, RefurbListing } from './types'
-
-/**
- * Apple's refurbished store is split into these grids, one page each.
- *
- * The list lives here rather than in the scraper because the matcher needs it
- * too: a family whose grid failed to load must say so, rather than say Apple
- * has none.
- */
-export const REFURB_CATEGORIES = ['mac', 'ipad', 'iphone', 'watch', 'appletv', 'homepod'] as const
-export type RefurbCategory = (typeof REFURB_CATEGORIES)[number]
+import type { Offer, RefurbCategory, RefurbListing } from './types'
 
 /**
  * Which refurbished-grid models belong to each family we price.
@@ -225,6 +215,13 @@ export interface SecondHandMatch {
   exact: boolean
   /** Price-driving facets the units carry and this configuration does not. */
   unpinned: string[]
+  /**
+   * The other direction: price-driving specs this configuration pins that the
+   * units do not state, so nothing could check them. Apple lists its TV with
+   * no facets at all, which is not agreement — it is silence, and a reader
+   * told only that the match is inexact is owed the reason.
+   */
+  unconfirmed: string[]
 }
 
 /**
@@ -334,6 +331,11 @@ function search(
   const checked = wanted.filter((spec) => matches.some((l) => carriedKey(spec, l) !== undefined))
   const confirmed = checked.filter((spec) => spec.keys.some((key) => PRICE_DRIVING.has(key)))
 
+  const unconfirmed = wanted
+    .filter((spec) => spec.keys.some((key) => PRICE_DRIVING.has(key)))
+    .filter((spec) => matches.some((l) => carriedKey(spec, l) === undefined))
+    .map((spec) => labelFor(spec.keys[0]))
+
   const matchedOn = checked.map((spec) => labelFor(carriedKey(spec, matches[0]) ?? spec.keys[0]))
   if (processor.chip || processor.cpu) matchedOn.push('processor')
 
@@ -344,6 +346,7 @@ function search(
     currency: sorted[0].currency,
     matchedOn,
     varyingOn,
+    unconfirmed,
     basis: sameChip ? 'this-generation' : 'earlier-generation',
     // Every unit must carry and agree on each confirmed spec, and there must
     // be at least one -- otherwise nothing was verified.

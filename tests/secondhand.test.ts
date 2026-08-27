@@ -104,6 +104,7 @@ describe('matchRefurb', () => {
 
     expect(match.exact).toBe(false)
     expect(match.unpinned).toEqual(['storage', 'release year', 'memory'])
+    expect(match.unconfirmed).toEqual([])
     expect(match.listings[0].amount).toBe(2629)
   })
 
@@ -150,6 +151,11 @@ describe('matchRefurb', () => {
     expect(match.listings).toHaveLength(1)
     expect(match.exact).toBe(false)
     expect(match.matchedOn).toEqual([])
+    // And the reader is told which way the gap runs: not "the unit pins
+    // something you did not", but "Apple never said, so nothing was checked".
+    // `/^appletv/` names no generation, so that is unpinned as well.
+    expect(match.unpinned).toEqual(['generation'])
+    expect(match.unconfirmed).toEqual(['connectivity'])
   })
 
   /**

@@ -1,4 +1,4 @@
-import { MARKETS, REFURB_MARKET, STORES } from '../shared/markets'
+import { MARKETS, marketById, REFURB_MARKET, STORES } from '../shared/markets'
 import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
@@ -68,7 +68,7 @@ async function startSweep(env: Env, now: Date, reason: string): Promise<string> 
  */
 async function stepRefurb(env: Env, now: Date): Promise<string> {
   const state = await getSweepState(env)
-  const market = MARKETS.find((m) => m.id === REFURB_MARKET)!
+  const market = marketById(REFURB_MARKET)!
   const budget = new RequestBudget(REQUESTS_PER_TICK)
 
   try {

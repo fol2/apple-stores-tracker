@@ -70,6 +70,12 @@ export interface FxRates {
 }
 
 /**
+ * Apple's refurbished store is split into these grids, one page each.
+ */
+export const REFURB_CATEGORIES = ['mac', 'ipad', 'iphone', 'watch', 'appletv', 'homepod'] as const
+export type RefurbCategory = (typeof REFURB_CATEGORIES)[number]
+
+/**
  * One unit in Apple's refurbished store.
  *
  * `dimensions` is the refurbished grid's own facet map, not a configuration
@@ -81,7 +87,7 @@ export interface RefurbListing {
   title: string
   /** Apple's own model token, such as `macbookpro` or `ipadair_11`. */
   model: string
-  category: string
+  category: RefurbCategory
   dimensions: Record<string, string>
   amount: number
   currency: string

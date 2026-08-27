@@ -8,9 +8,9 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { collectRefurb } from '../src/scrape/refurb'
 import { RequestBudget } from '../src/scrape/sweep'
-import { MARKETS, REFURB_MARKET } from '../src/shared/markets'
+import { marketById, REFURB_MARKET } from '../src/shared/markets'
 
-const market = MARKETS.find((m) => m.id === REFURB_MARKET)!
+const market = marketById(REFURB_MARKET)!
 const collection = await collectRefurb(market, new RequestBudget(30))
 
 const snapshot = JSON.parse(readFileSync('data/snapshot.json', 'utf8'))

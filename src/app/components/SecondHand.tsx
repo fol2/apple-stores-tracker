@@ -7,6 +7,8 @@ import type { FxRates, Offer, RefurbListing } from '../../shared/types'
 interface Props {
   offer: Offer | undefined
   listings: RefurbListing[]
+  /** Whether the refurbished store has ever been read. */
+  collected: boolean
   /** Grids that could not be read on the last run. */
   failedCategories: string[]
   familyId: string
@@ -49,6 +51,7 @@ const prettyFacet = (value: string): string =>
 export function SecondHand({
   offer,
   listings,
+  collected,
   failedCategories,
   familyId,
   readAt,
@@ -78,7 +81,15 @@ export function SecondHand({
         {/* Three different silences, and only one of them is "Apple has none".
             Reporting the other two as absent stock would be a claim no reading
             supports. */}
-        {category === null ? (
+        {!collected ? (
+          <>
+            <p className="mt-6 text-lg">The refurbished store has not been read yet.</p>
+            <p className="mt-2 max-w-xl text-soft">
+              Whether Apple has one of these is unknown rather than settled. The first read
+              runs within the day.
+            </p>
+          </>
+        ) : category === null ? (
           <>
             <p className="mt-6 text-lg">Second-hand prices are not collected for {familyName}.</p>
             <p className="mt-2 max-w-xl text-soft">
@@ -201,10 +212,22 @@ export function SecondHand({
               ) : (
                 <>
                   {' '}
-                  — but not for the same machine. These units pin{' '}
-                  <span className="text-ink">{match.unpinned.join(' and ')}</span>, which this
-                  configuration does not, so read them one at a time below rather than as a
-                  saving.
+                  — but not for the same machine.{' '}
+                  {match.unpinned.length > 0 && (
+                    <>
+                      These units pin{' '}
+                      <span className="text-ink">{match.unpinned.join(' and ')}</span>, which this
+                      configuration does not.{' '}
+                    </>
+                  )}
+                  {match.unconfirmed.length > 0 && (
+                    <>
+                      Apple's listing does not state{' '}
+                      <span className="text-ink">{match.unconfirmed.join(' or ')}</span>, so that
+                      could not be checked against it.{' '}
+                    </>
+                  )}
+                  Read them one at a time below rather than as a saving.
                 </>
               )}
             </figcaption>
