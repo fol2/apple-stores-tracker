@@ -1,20 +1,34 @@
 import type { MarketPrice } from '../../shared/convert'
-import { formatBase, formatLocal } from '../../shared/convert'
+import { convertBetween, formatBase, formatIn, formatLocal } from '../../shared/convert'
+import type { FxRates } from '../../shared/types'
 
 interface Props {
   rows: MarketPrice[]
   homeMarketId: string
   showRefunds: boolean
+  fx: FxRates
+  /** Second money column, or null to show pounds alone. */
+  altCurrency: string | null
+  currencies: string[]
+  onAltCurrency: (currency: string | null) => void
 }
 
 const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`
 
-export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
+export function MarketTable({
+  rows,
+  homeMarketId,
+  showRefunds,
+  fx,
+  altCurrency,
+  currencies,
+  onAltCurrency,
+}: Props) {
   const cheapest = rows.find((r) => r.baseAmount !== null)?.baseAmount ?? null
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[42rem] border-collapse text-sm">
+      <table className="w-full min-w-[46rem] border-collapse text-sm">
         <thead>
           <tr className="border-b border-rule text-left">
             <th className="eyebrow py-2 pr-3 font-semibold">#</th>
@@ -24,6 +38,25 @@ export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
               <th className="eyebrow py-2 pr-3 text-right font-semibold">Refund</th>
             )}
             <th className="eyebrow py-2 pr-3 text-right font-semibold">In pounds</th>
+            <th className="py-2 pr-3 text-right">
+              {/* The second currency is the reader's choice, so the control
+                  lives in the column it governs rather than off in a toolbar. */}
+              <label className="eyebrow inline-flex items-center gap-1">
+                <span className="sr-only">Second currency column</span>
+                <select
+                  className="eyebrow cursor-pointer rounded border border-rule bg-transparent px-1.5 py-0.5"
+                  value={altCurrency ?? ''}
+                  onChange={(e) => onAltCurrency(e.target.value || null)}
+                >
+                  <option value="">Add currency…</option>
+                  {currencies.map((currency) => (
+                    <option key={currency} value={currency}>
+                      In {currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </th>
             <th className="eyebrow py-2 text-right font-semibold">vs cheapest</th>
           </tr>
         </thead>
@@ -32,6 +65,10 @@ export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
             const isHome = row.market.id === homeMarketId
             const gap =
               row.baseAmount !== null && cheapest !== null ? row.baseAmount - cheapest : null
+            const alt =
+              altCurrency && row.localAmount !== undefined && row.offer
+                ? convertBetween(row.localAmount, row.offer.currency, altCurrency, fx)
+                : null
 
             return (
               <tr
@@ -86,8 +123,16 @@ export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
                 {showRefunds && (
                   <td className="tnum py-2.5 pr-3 text-right">
                     {row.policy.available ? (
-                      <span className="text-low" title={row.policy.note}>
+                      <span
+                        className={row.policy.appleConfirmed ? 'text-low' : 'text-soft'}
+                        title={
+                          row.policy.appleConfirmed
+                            ? row.policy.note
+                            : `${row.policy.note} Apple's participation in this scheme is unverified.`
+                        }
+                      >
                         −{percent(row.policy.rate)}
+                        {!row.policy.appleConfirmed && <span className="ml-0.5">?</span>}
                       </span>
                     ) : (
                       <span className="text-soft" title={row.policy.note}>
@@ -99,6 +144,10 @@ export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
 
                 <td className="tnum py-2.5 pr-3 text-right font-semibold">
                   {row.baseAmount === null ? '—' : formatBase(row.baseAmount)}
+                </td>
+
+                <td className="tnum py-2.5 pr-3 text-right">
+                  {altCurrency === null ? '' : alt === null ? '—' : formatIn(alt, altCurrency)}
                 </td>
 
                 <td className="tnum py-2.5 text-right">

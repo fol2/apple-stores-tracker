@@ -33,6 +33,40 @@ export function toBase(amount: number, currency: string, fx: FxRates): number | 
 }
 
 /**
+ * Convert between any two quoted currencies, via the base the rates are
+ * quoted against. Note this cannot change the ranking: every price is scaled
+ * by the same factor, so cheapest in pounds is cheapest in yen too. The choice
+ * of display currency is about reading the numbers, not about the answer.
+ */
+export function convertBetween(
+  amount: number,
+  from: string,
+  to: string,
+  fx: FxRates,
+): number | null {
+  if (from === to) return amount
+  const inBase = toBase(amount, from, fx)
+  if (inBase === null) return null
+  if (to === fx.base) return inBase
+  const rate = fx.rates[to]
+  return rate ? inBase * rate : null
+}
+
+/** Currencies we can display, in market order, without repeats. */
+export const displayCurrencies = (fx: FxRates): string[] =>
+  [BASE_CURRENCY, ...MARKETS.map((m) => m.currency)]
+    .filter((c, i, all) => all.indexOf(c) === i)
+    .filter((c) => c === fx.base || fx.rates[c])
+
+export function formatIn(amount: number, currency: string, locale = 'en-GB'): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+/**
  * Rank every market for one exact configuration, cheapest first. Markets with
  * no price still appear — a missing row is information, and silently dropping
  * them would make coverage gaps look like availability.

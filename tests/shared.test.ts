@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compare, toBase } from '../src/shared/convert'
+import { compare, convertBetween, toBase } from '../src/shared/convert'
 import { afterRefund, refundPolicy } from '../src/shared/refunds'
 import { changedPoints } from '../src/shared/diff'
 import { MARKETS } from '../src/shared/markets'
@@ -48,9 +48,9 @@ describe('refund policies', () => {
     expect(afterRefund(999, refundPolicy('us'))).toBe(999)
   })
 
-  it('refunds the consumption tax out of a tax-inclusive Japanese price', () => {
-    // 10% tax inside a 149,800 yen price is 13,618; the rest is the net price.
-    expect(afterRefund(149_800, refundPolicy('jp'))).toBeCloseTo(136_181.8, 1)
+  it('refunds the GST component out of a tax-inclusive Australian price', () => {
+    // 10% GST inside a A$1,449 price is A$131.73; the rest is the net price.
+    expect(afterRefund(1449, refundPolicy('au'))).toBeCloseTo(1317.27, 2)
   })
 
   it('takes the 20% processing fee off Taiwan 5% business tax', () => {
@@ -58,7 +58,7 @@ describe('refund policies', () => {
   })
 
   it('never refunds a price below zero', () => {
-    expect(afterRefund(0, refundPolicy('jp'))).toBe(0)
+    expect(afterRefund(0, refundPolicy('au'))).toBe(0)
   })
 })
 
@@ -83,13 +83,13 @@ describe('compare', () => {
   })
 
   it('re-ranks once refunds are applied', () => {
-    // Japan refunds 10/110 while the US refunds nothing, which closes the gap.
-    const plain = compare(offers, fx).rows.find((r) => r.market.id === 'jp')!
-    const refunded = compare(offers, fx, { applyRefunds: true }).rows.find(
-      (r) => r.market.id === 'jp',
+    // Australia refunds the 10% GST while the US refunds nothing.
+    const withAu = [...offers, offer('au', 'AUD', 1899)]
+    const plain = compare(withAu, fx).rows.find((r) => r.market.id === 'au')!
+    const refunded = compare(withAu, fx, { applyRefunds: true }).rows.find(
+      (r) => r.market.id === 'au',
     )!
     expect(refunded.baseAmount!).toBeLessThan(plain.baseAmount!)
-    expect(compare(offers, fx, { applyRefunds: true }).rows[0].market.id).toBe('jp')
   })
 
   it('lists every market, so a gap reads as a gap and not as absence', () => {
@@ -137,5 +137,55 @@ describe('changedPoints', () => {
 
   it('leaves a withdrawn configuration alone instead of writing a zero', () => {
     expect(changedPoints([offer('uk', 'GBP', 1299)], [], today)).toEqual([])
+  })
+})
+
+describe('convertBetween', () => {
+  it('returns the amount unchanged when the currencies match', () => {
+    expect(convertBetween(1299, 'JPY', 'JPY', fx)).toBe(1299)
+  })
+
+  it('converts through the base the rates are quoted against', () => {
+    // 1,360 USD is 1,000 GBP, which is 216,640 JPY.
+    expect(convertBetween(1360, 'USD', 'JPY', fx)).toBeCloseTo(216_640, 4)
+  })
+
+  it('round-trips back to where it started', () => {
+    const there = convertBetween(999, 'EUR', 'AUD', fx)!
+    expect(convertBetween(there, 'AUD', 'EUR', fx)).toBeCloseTo(999, 6)
+  })
+
+  it('returns null when either side has no rate', () => {
+    expect(convertBetween(100, 'ZWL', 'GBP', fx)).toBeNull()
+    expect(convertBetween(100, 'GBP', 'ZWL', fx)).toBeNull()
+  })
+
+  it('cannot reorder markets, since it scales every price alike', () => {
+    const offers = [offer('us', 'USD', 1299), offer('jp', 'JPY', 199_800), offer('de', 'EUR', 1549)]
+    const ranked = compare(offers, fx).rows.filter((r) => r.offer)
+    const inJpy = ranked.map((r) => convertBetween(r.offer!.amount, r.offer!.currency, 'JPY', fx)!)
+    expect(inJpy).toEqual([...inJpy].sort((a, b) => a - b))
+  })
+})
+
+describe('refund policy confidence', () => {
+  it('reports no refund for Japan, where Apple withdrew from the scheme', () => {
+    expect(refundPolicy('jp').available).toBe(false)
+    expect(afterRefund(149_800, refundPolicy('jp'))).toBe(149_800)
+  })
+
+  it('marks every offered refund as confirmed at Apple or not', () => {
+    for (const market of MARKETS) {
+      const policy = refundPolicy(market.id)
+      if (!policy.available) continue
+      expect(typeof policy.appleConfirmed, market.id).toBe('boolean')
+    }
+  })
+
+  it('never claims Apple participation where the refund is unavailable', () => {
+    for (const market of MARKETS) {
+      const policy = refundPolicy(market.id)
+      if (!policy.available) expect(policy.appleConfirmed, market.id).toBe(false)
+    }
   })
 })

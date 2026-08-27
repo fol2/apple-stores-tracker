@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { compare, formatBase } from '../shared/convert'
+import { compare, convertBetween, displayCurrencies, formatBase, formatIn } from '../shared/convert'
 import { SpreadAxis } from './components/SpreadAxis'
 import { MarketTable } from './components/MarketTable'
 import { SpecPicker } from './components/SpecPicker'
@@ -22,6 +22,8 @@ function Prices() {
   const [wanted, setWanted] = useState<Record<string, string>>({})
   const [priority, setPriority] = useState<string[]>([])
   const [showRefunds, setShowRefunds] = useState(false)
+  // Handy for anyone weighing a UK price against a second home market.
+  const [altCurrency, setAltCurrency] = useState<string | null>('HKD')
 
   useEffect(() => {
     loadSnapshot().then(setData, (e: Error) => setError(e.message))
@@ -123,6 +125,19 @@ function Prices() {
               <span className="font-mono text-4xl font-bold tracking-[-0.06em] sm:text-6xl">
                 {formatBase(cheapest.baseAmount)}
               </span>
+              {altCurrency && altCurrency !== data.baseCurrency && cheapest.offer && (
+                <span className="font-mono text-xl text-soft">
+                  {(() => {
+                    const alt = convertBetween(
+                      cheapest.localAmount ?? cheapest.offer.amount,
+                      cheapest.offer.currency,
+                      altCurrency,
+                      data.fx!,
+                    )
+                    return alt === null ? null : formatIn(alt, altCurrency)
+                  })()}
+                </span>
+              )}
               <span className="text-xl">
                 {cheapest.market.flag} {cheapest.market.name}
               </span>
@@ -178,6 +193,10 @@ function Prices() {
           rows={comparison.rows}
           homeMarketId={HOME_MARKET}
           showRefunds={showRefunds}
+          fx={data.fx!}
+          altCurrency={altCurrency}
+          currencies={displayCurrencies(data.fx!)}
+          onAltCurrency={setAltCurrency}
         />
       </section>
 
@@ -287,10 +306,18 @@ function Footnotes({ data, covered }: { data: SnapshotResponse; covered: number 
 
       <p className="mt-6 max-w-3xl">
         Prices are official Apple Online Store list prices, read from Apple's own regional
-        product selectors. US prices exclude sales tax, which is added at checkout. Tax-refund
-        figures are estimates for visitors, not quotes: schemes carry minimum spends, departure
-        deadlines and operator fees. Warranty terms, keyboard layouts, plug types and stock
-        differ by market, and buying abroad may attract import duty on the way home.
+        product selectors. US prices exclude sales tax, which is added at checkout. Warranty
+        terms, keyboard layouts, plug types and stock differ by market, and buying abroad may
+        attract import duty on the way home.
+      </p>
+
+      <p className="mt-4 max-w-3xl">
+        Tax-refund figures are estimates for visitors buying in person, not quotes: schemes
+        carry minimum spends, departure deadlines and operator fees. Most are voluntary for the
+        retailer, so what matters is whether Apple's own stores run them — Japan has a
+        well-known tax-free system that Apple withdrew from. A refund marked{' '}
+        <span className="text-soft">?</span> means the country runs a scheme but Apple's
+        participation is unverified.
       </p>
 
       <p className="mt-4">

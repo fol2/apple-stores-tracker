@@ -7,6 +7,16 @@
  * fraction of the local list price a visitor can realistically expect back,
  * net of typical fees — deliberately conservative where operators skim.
  *
+ * The question that matters here is narrower than "does this country refund
+ * visitors". Most schemes are voluntary for the retailer, and these are Apple's
+ * own prices — so what counts is whether **Apple's** stores operate the scheme.
+ * Japan is the cautionary case: the country has a well-known tax-free system,
+ * and Apple withdrew from it after a reseller-abuse investigation.
+ *
+ * `appleConfirmed` records that difference instead of hiding it. Where it is
+ * false the country's scheme exists but Apple's participation is unverified,
+ * and the interface says so rather than presenting a confident number.
+ *
  * Each entry records its derivation so the number can be re-checked when a
  * country changes its VAT rate, rather than being an unexplained constant.
  */
@@ -16,10 +26,18 @@ export interface RefundPolicy {
   rate: number
   /** Flat administrative deduction in local currency, if the scheme has one. */
   fixedFee: number
+  /** Whether Apple's own stores are known to operate the scheme. */
+  appleConfirmed: boolean
   note: string
 }
 
-const none = (note: string): RefundPolicy => ({ available: false, rate: 0, fixedFee: 0, note })
+const none = (note: string): RefundPolicy => ({
+  available: false,
+  rate: 0,
+  fixedFee: 0,
+  appleConfirmed: false,
+  note,
+})
 
 export const REFUND_POLICIES: Record<string, RefundPolicy> = {
   uk: none(
@@ -32,27 +50,28 @@ export const REFUND_POLICIES: Record<string, RefundPolicy> = {
   ca: none('Canada no longer offers a general visitor GST/HST rebate on goods like these.'),
 
   // 23% VAT → 23/123 gross; operators typically return ~75% of that.
-  ie: { available: true, rate: (23 / 123) * 0.75, fixedFee: 0, note: 'Estimated non-EU-resident refund of Ireland’s 23% VAT, net of typical operator fees.' },
+  ie: { available: true, rate: (23 / 123) * 0.75, fixedFee: 0, appleConfirmed: true, note: 'Estimated non-EU-resident refund of Ireland’s 23% VAT, net of typical operator fees.' },
   // 19% VAT → 19/119 gross, less operator fees.
-  de: { available: true, rate: (19 / 119) * 0.75, fixedFee: 0, note: 'Estimated non-EU-resident refund of Germany’s 19% VAT, net of typical operator fees.' },
+  de: { available: true, rate: (19 / 119) * 0.75, fixedFee: 0, appleConfirmed: true, note: 'Estimated non-EU-resident refund of Germany’s 19% VAT, net of typical operator fees.' },
   // 20% VAT → 20/120 gross, less operator fees.
-  fr: { available: true, rate: (20 / 120) * 0.72, fixedFee: 0, note: 'Estimated non-EU-resident refund of France’s 20% VAT, net of typical operator fees.' },
-  // Full exemption from the 10% consumption tax at a licensed tax-free retailer.
-  jp: { available: true, rate: 10 / 110, fixedFee: 0, note: 'Estimated exemption from Japan’s 10% consumption tax. The retailer and the purchase must both qualify as tax-free.' },
+  fr: { available: true, rate: (20 / 120) * 0.72, fixedFee: 0, appleConfirmed: true, note: 'Estimated non-EU-resident refund of France’s 20% VAT, net of typical operator fees.' },
+  jp: none(
+    'Japan runs a tax-free system, but Apple\u2019s Japanese stores stopped offering tax-free sales to visitors after a tax investigation into reseller abuse, so the 10% consumption tax is included and stays included. From 1 November 2026 Japan moves to refunds claimed at the airport rather than exemption at the till, which may change this.',
+  ),
   // Korea Tourism Organization quotes roughly 5–8% net; midpoint used.
-  kr: { available: true, rate: 0.07, fixedFee: 0, note: 'Midpoint of the Korea Tourism Organization’s approximate 5–8% net refund range after processing fees.' },
+  kr: { available: true, rate: 0.07, fixedFee: 0, appleConfirmed: false, note: 'Midpoint of the Korea Tourism Organization’s approximate 5–8% net refund range after processing fees.' },
   // 7% VAT → 7/107 gross, less administrative and payment fees.
-  th: { available: true, rate: 0.06, fixedFee: 0, note: 'Estimated net VAT refund on Thailand’s 7% VAT after typical administrative and payment fees.' },
+  th: { available: true, rate: 0.06, fixedFee: 0, appleConfirmed: false, note: 'Estimated net VAT refund on Thailand’s 7% VAT after typical administrative and payment fees.' },
   // 9% GST → 9/109 gross, less operator fees.
-  sg: { available: true, rate: 0.075, fixedFee: 0, note: 'Estimated net refund under Singapore’s Tourist Refund Scheme after operator fees.' },
+  sg: { available: true, rate: 0.075, fixedFee: 0, appleConfirmed: false, note: 'Estimated net refund under Singapore’s Tourist Refund Scheme after operator fees.' },
   // Tourist Refund Scheme returns the 10% GST component in full.
-  au: { available: true, rate: 10 / 110, fixedFee: 0, note: 'Estimated Australian TRS refund of the 10% GST component. Eligibility rules still apply.' },
+  au: { available: true, rate: 10 / 110, fixedFee: 0, appleConfirmed: true, note: 'Estimated Australian TRS refund of the 10% GST component. Eligibility rules still apply.' },
   // 5% business tax, less the official 20% processing fee.
-  tw: { available: true, rate: (5 / 105) * 0.8, fixedFee: 0, note: 'Refund of Taiwan’s 5% business tax, less the official 20% processing fee.' },
+  tw: { available: true, rate: (5 / 105) * 0.8, fixedFee: 0, appleConfirmed: false, note: 'Refund of Taiwan’s 5% business tax, less the official 20% processing fee.' },
   // Departure refund of ~11%, less the agent's cut.
-  cn: { available: true, rate: 0.09, fixedFee: 0, note: 'Estimated departure refund for overseas visitors, net of the agency fee.' },
+  cn: { available: true, rate: 0.09, fixedFee: 0, appleConfirmed: false, note: 'Estimated departure refund for overseas visitors, net of the agency fee.' },
   // 5% VAT → 5/105 gross, less operator fees.
-  ae: { available: true, rate: (5 / 105) * 0.86, fixedFee: 0, note: 'Estimated UAE tourist VAT refund after the operator’s fee.' },
+  ae: { available: true, rate: (5 / 105) * 0.86, fixedFee: 0, appleConfirmed: false, note: 'Estimated UAE tourist VAT refund after the operator’s fee.' },
 }
 
 export const refundPolicy = (marketId: string): RefundPolicy =>
