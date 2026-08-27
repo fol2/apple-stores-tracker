@@ -97,7 +97,7 @@ requireText('.github/workflows/ai-sdlc.yml', workflow, [
   'cancel-in-progress:',
 ])
 
-if (agents.length > 10_000) failures.push('AGENTS.md: exceeds 10,000-character progressive-disclosure budget')
+if (agents.length > 7_000) failures.push('AGENTS.md: exceeds 7,000-character progressive-disclosure budget')
 if (claude.length > 1_500) failures.push('CLAUDE.md: exceeds 1,500-character entry-point budget')
 if (workflow.includes('pull_request_target:')) failures.push('workflow: pull_request_target is forbidden')
 for (const forbidden of ['wrangler deploy', 'db:migrate', 'scripts/collect.ts', 'apple.com/']) {
