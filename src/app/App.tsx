@@ -4,6 +4,7 @@ import { SpreadAxis } from './components/SpreadAxis'
 import { MarketTable } from './components/MarketTable'
 import { SpecPicker } from './components/SpecPicker'
 import { Agents } from './components/Agents'
+import { SecondHand } from './components/SecondHand'
 import { CurrencyPicker, EducationPicker } from './components/Controls'
 import { dimensionsOf, loadSnapshot, offersFor, resolveSelection, type SnapshotResponse } from './lib/data'
 
@@ -26,6 +27,7 @@ function Prices() {
   const [currency, setCurrency] = useState('GBP')
   // At most one market: Apple's education store serves that country's students.
   const [educationMarketId, setEducationMarketId] = useState<string | null>(null)
+  const [view, setView] = useState<'new' | 'used'>('new')
 
   useEffect(() => {
     loadSnapshot().then(setData, (e: Error) => setError(e.message))
@@ -174,6 +176,45 @@ function Prices() {
         <SpecPicker dimensions={dimensions} selected={selectionOf(resolved)} onChange={chooseSpec} />
       </section>
 
+      {/* Two ways to buy the same machine, so two views of one configuration.
+          The pickers above belong to both and stay put across the switch. */}
+      <div className="mt-10 flex gap-1 border-b border-rule" role="tablist">
+        {(
+          [
+            ['new', 'New, 15 markets'],
+            ['used', 'Second-hand, UK'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            onClick={() => setView(id)}
+            className={[
+              '-mb-px border-b-2 px-3 py-2 text-sm',
+              view === id
+                ? 'border-ink font-semibold'
+                : 'border-transparent text-soft hover:text-ink',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'used' ? (
+        <SecondHand
+          offer={comparison.rows.find((r) => r.offer)?.offer}
+          listings={data.refurb?.listings ?? []}
+          readAt={data.refurb?.collectedAt ?? null}
+          rows={comparison.rows}
+          currency={currency}
+          fx={data.fx!}
+          familyName={family?.name ?? 'product'}
+        />
+      ) : (
+        <>
       {/* The headline answer, stated once and in full. */}
       <section className="mt-12 rounded-lg border border-rule bg-raised p-6 sm:p-8">
         <p className="eyebrow">Cheapest market</p>
@@ -246,6 +287,8 @@ function Prices() {
           currency={currency}
         />
       </section>
+        </>
+      )}
 
       <Footnotes data={data} covered={comparison.covered} />
     </Shell>

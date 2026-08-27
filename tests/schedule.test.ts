@@ -3,6 +3,7 @@ import {
   chooseWork,
   MAX_SWEEP_AGE_MS,
   PROBE_INTERVAL_MS,
+  REFURB_INTERVAL_MS,
   type ScheduleInput,
 } from '../src/shared/schedule'
 
@@ -12,6 +13,7 @@ const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
 const state = (overrides: Partial<ScheduleInput> = {}): ScheduleInput => ({
   step: -1,
   probeAt: ago(1000),
+  refurbAt: ago(1000),
   finishedAt: ago(1000),
   ...overrides,
 })
@@ -27,8 +29,23 @@ describe('chooseWork', () => {
    * until the pass reaches its assemble step.
    */
   it('finishes an unfinished sweep before starting anything else', () => {
-    const midSweep = state({ step: 7, probeAt: null, finishedAt: null })
+    const midSweep = state({ step: 7, probeAt: null, refurbAt: null, finishedAt: null })
     expect(chooseWork(midSweep, now)).toBe('continue-sweep')
+  })
+
+  /**
+   * Six requests for the whole second-hand catalogue, against ninety batches
+   * for a price sweep -- so it runs on its own daily timer rather than waiting
+   * for one, and ahead of the probe, which can afford to slip two hours.
+   */
+  it('re-reads the refurbished store daily, ahead of probing', () => {
+    const due = state({ refurbAt: ago(REFURB_INTERVAL_MS + 1), probeAt: ago(PROBE_INTERVAL_MS + 1) })
+    expect(chooseWork(due, now)).toBe('refresh-refurb')
+    expect(chooseWork(state({ refurbAt: ago(REFURB_INTERVAL_MS - 1000) }), now)).toBe('idle')
+  })
+
+  it('never reads the refurbished store while a sweep is half done', () => {
+    expect(chooseWork(state({ step: 4, refurbAt: null }), now)).toBe('continue-sweep')
   })
 
   it('probes once the interval has passed', () => {
@@ -45,7 +62,7 @@ describe('chooseWork', () => {
   })
 
   it('treats never-having-run as overdue, so a cold start collects', () => {
-    expect(chooseWork(state({ probeAt: null, finishedAt: null }), now)).toBe('start-sweep')
+    expect(chooseWork(state({ probeAt: null, refurbAt: null, finishedAt: null }), now)).toBe('start-sweep')
   })
 
   it('never starts a second sweep while one is running', () => {

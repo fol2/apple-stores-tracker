@@ -1,10 +1,10 @@
 import { CATEGORIES, FAMILIES } from '../shared/families'
-import { BASE_CURRENCY, MARKETS } from '../shared/markets'
+import { BASE_CURRENCY, MARKETS, REFURB_MARKET } from '../shared/markets'
 import { REFUND_POLICIES } from '../shared/refunds'
 import { handleMcp } from './mcp'
 import { runNextStep } from './sweep-runner'
 import { currentRates } from './rates'
-import { getSnapshot, getSweepState, type Env } from './store'
+import { getRefurb, getSnapshot, getSweepState, type Env } from './store'
 
 const json = (body: unknown, maxAge: number): Response =>
   Response.json(body, {
@@ -68,7 +68,11 @@ export default {
     }
 
     if (url.pathname === '/api/snapshot') {
-      const [snapshot, fx] = await Promise.all([getSnapshot(env), currentRates(env, ctx)])
+      const [snapshot, fx, refurb] = await Promise.all([
+        getSnapshot(env),
+        currentRates(env, ctx),
+        getRefurb(env, REFURB_MARKET),
+      ])
       if (!snapshot) return json({ error: 'No price data collected yet.' }, 60)
       return json(
         {
@@ -79,6 +83,7 @@ export default {
           families: FAMILIES,
           refunds: REFUND_POLICIES,
           fx,
+          refurb,
           offers: snapshot.offers,
           errors: snapshot.errors,
         },
@@ -122,6 +127,7 @@ export default {
             nextQuoteDue: fx?.nextUpdateAt ?? null,
           },
           changeDetection: { lastProbeAt: state.probeAt, position: state.probeCursor },
+          secondHand: { market: REFURB_MARKET, readAt: state.refurbAt },
           fullSweep: {
             inProgress: state.step >= 0,
             step: state.step >= 0 ? state.step : null,

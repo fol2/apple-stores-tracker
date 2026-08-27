@@ -50,7 +50,8 @@ cron (*/3) ─► whichever tier is most overdue
   │
   ├─ 1. continue a sweep   in progress?      one planned batch
   ├─ 2. full sweep         > 7 days old?     ~90 batches, ~4.6 hours
-  ├─ 3. probe              > 2 hours old?    one rotating slice, ~15 requests
+  ├─ 3. refurbished stock  > 1 day old?      6 requests, one tick
+  ├─ 4. probe              > 2 hours old?    one rotating slice, ~15 requests
   └─    otherwise idle
 ```
 
@@ -78,6 +79,29 @@ reports where each tier has got to.
 **KV** holds the snapshot — one blob, read on every request, cached at the edge.
 **D1** holds history, and only rows that *changed*: Apple prices barely move, so writing
 every configuration every day would be ~90k rows to record that nothing happened.
+
+## Second-hand
+
+The **Second-hand** tab prices the same configuration used, from Apple's own refurbished
+store — returned and repaired machines Apple has restored, sold with the full warranty.
+Nothing else free was usable: CeX's API is behind a bot challenge, Back Market's
+robots.txt disallows the paths its own site calls, and eBay wants a registered key. The
+refurbished grid needs none of that, comes from an origin already handled politely here,
+and ships the whole category in one page — six requests for the entire catalogue, against
+ninety batches for a price sweep.
+
+Only the UK is collected. A refurbished unit is one physical machine in one warehouse, so
+unlike a list price it does not generalise across markets.
+
+The comparison is the delicate part, because the grid's facets and our configuration
+dimensions overlap without either containing the other. A match pins every facet both
+sides name, then checks the processor against the listing's own title — the facets do not
+carry the chip, so an M5 and an M5 Pro of the same size and storage look identical there.
+What is left unpinned is reported rather than glossed: Apple's Mac select pages carry no
+storage or memory, so a 13-inch MacBook Air configuration matches refurbished units of
+every capacity, one of which costs a thousand pounds more than the new machine it sits
+next to. The page shows the gap either way and says plainly when the two prices are not
+the same machine.
 
 Education prices come from Apple's parallel `/<market>-edu` store. Only one market's
 education price can apply to any one buyer, since you can only be a student in one

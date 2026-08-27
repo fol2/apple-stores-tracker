@@ -1,10 +1,12 @@
-import { MARKETS, STORES } from '../shared/markets'
+import { MARKETS, REFURB_MARKET, STORES } from '../shared/markets'
 import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
 import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
+import { collectRefurb } from '../scrape/refurb'
 import type { Offer, Snapshot } from '../shared/types'
 import {
+  putRefurb,
   getPlan,
   getRaw,
   getPendingHistory,
@@ -40,6 +42,8 @@ export async function runNextStep(env: Env, now = new Date()): Promise<string> {
       return runStep(env, state.step, now)
     case 'start-sweep':
       return startSweep(env, now, 'scheduled: catalogue is due a full read')
+    case 'refresh-refurb':
+      return stepRefurb(env, now)
     case 'probe':
       return stepProbe(env, now)
     default:
@@ -51,6 +55,33 @@ async function startSweep(env: Env, now: Date, reason: string): Promise<string> 
   const state = await getSweepState(env)
   await putSweepState(env, { ...state, step: 0, startedAt: now.toISOString(), reason })
   return `${reason} -> ${await runStep(env, 0, now)}`
+}
+
+/**
+ * Read the second-hand market: Apple's own refurbished store, in one market.
+ *
+ * Six requests for the whole catalogue, which is why this fits in a single
+ * tick where a price sweep needs ninety. Only the UK is collected -- a
+ * refurbished unit has to be bought where it sits, so a Tokyo listing is not
+ * an option a UK reader has.
+ */
+async function stepRefurb(env: Env, now: Date): Promise<string> {
+  const state = await getSweepState(env)
+  const market = MARKETS.find((m) => m.id === REFURB_MARKET)!
+  const budget = new RequestBudget(REQUESTS_PER_TICK)
+
+  try {
+    const collection = await collectRefurb(market, budget)
+    // A read that returned nothing is a failed read, not an empty shop: keep
+    // what we have rather than blanking the tab on one bad afternoon.
+    if (collection.listings.length === 0) throw new Error('no listings parsed')
+    await putRefurb(env, market.id, collection)
+    await putSweepState(env, { ...state, refurbAt: now.toISOString() })
+    return `refurb: ${collection.listings.length} listings, ${collection.errors.length} categories failed`
+  } catch (error) {
+    await putSweepState(env, { ...state, refurbAt: now.toISOString() })
+    return `refurb: failed, keeping previous listings (${error})`
+  }
 }
 
 /**

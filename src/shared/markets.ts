@@ -38,6 +38,14 @@ export const MARKETS: Market[] = [
 
 export const BASE_CURRENCY = 'GBP'
 
+/**
+ * The one market whose second-hand listings are collected.
+ *
+ * A refurbished unit is a single physical machine that has to be bought where
+ * it sits, so unlike a new price it does not generalise across markets.
+ */
+export const REFURB_MARKET = 'uk'
+
 export const marketById = (id: string): Market | undefined =>
   MARKETS.find((m) => m.id === id)
 

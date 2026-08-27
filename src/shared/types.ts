@@ -68,3 +68,22 @@ export interface FxRates {
   /** `rates[CUR]` = how many CUR one unit of `base` buys. */
   rates: Record<string, number>
 }
+
+/**
+ * One unit in Apple's refurbished store.
+ *
+ * `dimensions` is the refurbished grid's own facet map, not a configuration
+ * key: its fields overlap the new-price dimensions but are neither a subset
+ * nor a superset, so matching is a deliberate step rather than a lookup.
+ */
+export interface RefurbListing {
+  partNumber: string
+  title: string
+  /** Apple's own model token, such as `macbookpro` or `ipadair_11`. */
+  model: string
+  category: string
+  dimensions: Record<string, string>
+  amount: number
+  currency: string
+  sourceUrl: string
+}

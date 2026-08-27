@@ -71,7 +71,11 @@ export class RequestBudget {
   }
 }
 
-const get = async (url: string, budget: RequestBudget): Promise<Response> => {
+/**
+ * Every outbound request goes through here, so the cool-off, the retry policy
+ * and the budget are one regime rather than one per caller.
+ */
+export const get = async (url: string, budget: RequestBudget): Promise<Response> => {
   for (let attempt = 1; ; attempt++) {
     await respectCoolOff()
     budget.claim()

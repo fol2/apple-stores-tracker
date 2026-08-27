@@ -14,18 +14,26 @@
 export const PROBE_INTERVAL_MS = 2 * 60 * 60 * 1000
 
 /**
+ * Apple's refurbished stock turns over daily and costs six requests to read in
+ * full -- one page per category, no pagination -- so it refreshes on its own
+ * slow timer rather than waiting on a price sweep.
+ */
+export const REFURB_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+/**
  * Sweep anyway if the last one is this old. The probe watches prices, but it
  * cannot see a product Apple has only just added, so the catalogue still needs
  * rediscovering on a slow timer.
  */
 export const MAX_SWEEP_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
-export type Work = 'continue-sweep' | 'start-sweep' | 'probe' | 'idle'
+export type Work = 'continue-sweep' | 'start-sweep' | 'refresh-refurb' | 'probe' | 'idle'
 
 export interface ScheduleInput {
   /** Index into the plan; -1 when no full sweep is in progress. */
   step: number
   probeAt: string | null
+  refurbAt: string | null
   finishedAt: string | null
 }
 
@@ -42,6 +50,7 @@ const age = (at: string | null, now: Date): number =>
 export function chooseWork(state: ScheduleInput, now: Date): Work {
   if (state.step >= 0) return 'continue-sweep'
   if (age(state.finishedAt, now) >= MAX_SWEEP_AGE_MS) return 'start-sweep'
+  if (age(state.refurbAt, now) >= REFURB_INTERVAL_MS) return 'refresh-refurb'
   if (age(state.probeAt, now) >= PROBE_INTERVAL_MS) return 'probe'
   return 'idle'
 }

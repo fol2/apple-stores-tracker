@@ -9,7 +9,7 @@ Load this skill only for product code, scraping, price data, Worker/API/MCP, UI,
 
 ## Architecture map
 
-- `src/scrape/`: Apple selector/configurator parsing, provider requests, shared throttling, bounded retries, and `RequestBudget`.
+- `src/scrape/`: Apple selector/configurator and refurbished-grid parsing, provider requests, shared throttling, bounded retries, and `RequestBudget`.
 - `src/shared/`: stable types, markets/stores, product families, conversion/refund logic, price diffs, sweep planning, and scheduling.
 - `src/worker/`: Cloudflare Worker HTTP/API/MCP entry point, KV/D1 storage, cron scheduling, sweep/probe execution, request-path exchange-rate refresh, and history draining.
 - `src/app/`: React/Vite reader UI and comparison controls.
@@ -28,6 +28,7 @@ npm test -- tests/plan.test.ts
 npm test -- tests/schedule.test.ts
 npm test -- tests/mcp.test.ts
 npm test -- tests/worker/rates.test.ts
+npm test -- tests/secondhand.test.ts
 npm test
 npm run build
 npm run ci
@@ -42,6 +43,7 @@ npm run ci
 - Build-to-order families use one configurator request per chip/model variant and expand additive deltas into the hardware matrix. Catalogue families read embedded market-page prices.
 - Do not include bundled software as hardware configuration dimensions.
 - Education prices remain a distinct store identity. Do not quietly replace retail price, and do not request known education-ineligible families such as iPhone.
+- Second-hand listings are matched, never keyed: the refurbished grid's facets and a configuration's dimensions overlap without either containing the other. A match must pin every facet both sides name, check the processor against the listing title, and report the price-driving facets it could not pin. Never present an unpinned match as the same machine or subtract its price as a saving without that qualification.
 - Partial errors remain visible. Never manufacture completeness by carrying an unrelated offer into a missing market/family/store result.
 
 ## Provider and request-budget invariants
