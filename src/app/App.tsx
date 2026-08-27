@@ -339,7 +339,7 @@ function Footnotes({ data, covered }: { data: SnapshotResponse; covered: number 
           <dt className="eyebrow">Exchange rates</dt>
           <dd className="tnum mt-1">
             {data.fx
-              ? `${new Date(data.fx.fetchedAt).toLocaleDateString('en-GB', { dateStyle: 'medium' })} · open.er-api.com`
+              ? `${new Date(data.fx.fetchedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · open.er-api.com`
               : 'unavailable'}
           </dd>
         </div>

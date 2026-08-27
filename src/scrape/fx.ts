@@ -11,6 +11,7 @@ const FX_ENDPOINT = `https://open.er-api.com/v6/latest/${BASE_CURRENCY}`
 interface ErApiResponse {
   result?: string
   time_last_update_utc?: string
+  time_next_update_utc?: string
   rates?: Record<string, number>
 }
 
@@ -21,9 +22,15 @@ export async function fetchFxRates(fetcher: typeof fetch = fetch): Promise<FxRat
   const body = (await response.json()) as ErApiResponse
   if (body.result !== 'success' || !body.rates) throw new Error('FX response was not a success')
 
+  // The feed publishes when its next quote is due, so nothing has to guess a
+  // refresh interval: a reader can ask for the new rate the minute it exists.
+  const nextUpdate = Date.parse(body.time_next_update_utc ?? '')
+
   return {
     base: BASE_CURRENCY,
     fetchedAt: new Date(body.time_last_update_utc ?? Date.now()).toISOString(),
+    refreshedAt: new Date().toISOString(),
+    nextUpdateAt: Number.isFinite(nextUpdate) ? new Date(nextUpdate).toISOString() : null,
     rates: body.rates,
   }
 }

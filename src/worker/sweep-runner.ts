@@ -3,7 +3,6 @@ import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
 import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
-import { fetchFxRates } from '../scrape/fx'
 import type { Offer, Snapshot } from '../shared/types'
 import {
   getPlan,
@@ -12,7 +11,6 @@ import {
   getSnapshot,
   getStructures,
   getSweepState,
-  putFx,
   putPendingHistory,
   putPlan,
   putRaw,
@@ -40,14 +38,12 @@ export async function runNextStep(env: Env, now = new Date()): Promise<string> {
   switch (chooseWork(state, now)) {
     case 'continue-sweep':
       return runStep(env, state.step, now)
-    case 'refresh-rates':
-      return stepFx(env, now)
     case 'start-sweep':
       return startSweep(env, now, 'scheduled: catalogue is due a full read')
     case 'probe':
       return stepProbe(env, now)
     default:
-      return 'idle: rates fresh, prices unchanged'
+      return 'idle: prices unchanged'
   }
 }
 
@@ -55,21 +51,6 @@ async function startSweep(env: Env, now: Date, reason: string): Promise<string> 
   const state = await getSweepState(env)
   await putSweepState(env, { ...state, step: 0, startedAt: now.toISOString(), reason })
   return `${reason} -> ${await runStep(env, 0, now)}`
-}
-
-/** One request, and it keeps every converted figure on the site honest. */
-async function stepFx(env: Env, now: Date): Promise<string> {
-  const state = await getSweepState(env)
-  try {
-    const rates = await fetchFxRates()
-    await putFx(env, rates)
-    await putSweepState(env, { ...state, fxAt: now.toISOString() })
-    return `fx: refreshed, quoted ${rates.fetchedAt}`
-  } catch (error) {
-    // Record the attempt so a failing rate source cannot crowd out the probe.
-    await putSweepState(env, { ...state, fxAt: now.toISOString() })
-    return `fx: failed, keeping previous rates (${error})`
-  }
 }
 
 /**

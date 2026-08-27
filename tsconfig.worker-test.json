@@ -1,0 +1,18 @@
+{
+  // Tests that exercise the Worker itself, and so reach Cloudflare's globals
+  // through `Env`. They cannot share a program with the Node-typed tests: the
+  // two type sets contradict each other on fetch, URL and Buffer.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["tests/worker"]
+}

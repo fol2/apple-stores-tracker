@@ -53,10 +53,11 @@ export const getFx = (env: Env) => readJson<FxRates>(env.PRICES, KEYS.fx)
 export const putFx = (env: Env, v: FxRates) => writeJson(env.PRICES, KEYS.fx, v)
 
 /**
- * Where the three tiers of work have got to.
+ * Where the scheduled work has got to.
  *
- * Rates, change detection and full collection move at wildly different speeds,
- * so each carries its own timestamp rather than sharing one clock.
+ * Change detection and full collection move at wildly different speeds, so
+ * each carries its own timestamp rather than sharing one clock. Exchange rates
+ * are not here: they refresh on the request path, and carry their own.
  */
 export interface SweepState {
   /** Index into the plan; -1 means no full sweep is in progress. */
@@ -65,8 +66,6 @@ export interface SweepState {
   finishedAt: string | null
   /** Why the current or last full sweep was started. */
   reason: string | null
-  /** Last exchange-rate refresh. */
-  fxAt: string | null
   /** Last change-detection probe, and where in the rotation it had reached. */
   probeAt: string | null
   probeCursor: number
@@ -77,7 +76,6 @@ const NO_SWEEP: SweepState = {
   startedAt: null,
   finishedAt: null,
   reason: null,
-  fxAt: null,
   probeAt: null,
   probeCursor: 0,
 }
