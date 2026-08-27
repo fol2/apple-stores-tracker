@@ -3,20 +3,27 @@ import {
   currentRates,
   DEFAULT_QUOTE_LIFE_MS,
   isDue,
+  MAX_QUOTE_LIFE_MS,
   MIN_REFRESH_INTERVAL_MS,
 } from '../../src/worker/rates'
+import { fetchFxRates } from '../../src/scrape/fx'
+import { MARKETS } from '../../src/shared/markets'
 import type { Env } from '../../src/worker/store'
 import type { FxRates } from '../../src/shared/types'
 
 const now = new Date('2026-08-27T12:00:00.000Z')
 const at = (ms: number) => new Date(now.getTime() + ms).toISOString()
 
+/** Every market's currency, since a short map is now rejected outright. */
+const full = (usd: number): Record<string, number> =>
+  Object.fromEntries(MARKETS.map((m, i) => [m.currency, m.currency === 'USD' ? usd : i + 2]))
+
 const quote = (overrides: Partial<FxRates> = {}): FxRates => ({
   base: 'GBP',
   fetchedAt: at(-DEFAULT_QUOTE_LIFE_MS),
   refreshedAt: at(-DEFAULT_QUOTE_LIFE_MS),
   nextUpdateAt: at(-1),
-  rates: { USD: 1.36 },
+  rates: full(1.36),
   ...overrides,
 })
 
@@ -85,11 +92,50 @@ describe('isDue', () => {
   it('refreshes when the record carries no usable timestamp at all', () => {
     expect(isDue(quote({ refreshedAt: 'not a date', fetchedAt: 'not a date' }), now)).toBe(true)
   })
+
+  /**
+   * The floor bounds how often the feed is read; this bounds how long one
+   * number is believed. A far-future next-update time would otherwise pin
+   * every converted figure on the site to a single quote forever.
+   */
+  it('stops believing a quote the source claims will never expire', () => {
+    const pinned = (age: number) =>
+      quote({ refreshedAt: at(-age), nextUpdateAt: at(365 * 24 * 60 * 60 * 1000) })
+    expect(isDue(pinned(MAX_QUOTE_LIFE_MS - 1000), now)).toBe(false)
+    expect(isDue(pinned(MAX_QUOTE_LIFE_MS + 1000), now)).toBe(true)
+  })
+})
+
+describe('fetchFxRates', () => {
+  it('reads the quote and next-quote times the feed publishes', async () => {
+    vi.stubGlobal('fetch', served(full(1.36)))
+    const rates = await fetchFxRates()
+
+    expect(rates.fetchedAt).toBe('2026-08-27T00:02:31.000Z')
+    expect(rates.nextUpdateAt).toBe('2026-08-28T00:27:41.000Z')
+  })
+
+  /**
+   * A success carrying a short map would replace a complete quote with one
+   * that silently drops markets, and the site would show them as unpriced.
+   */
+  it('refuses a success that is missing a market currency', async () => {
+    const short = full(1.36)
+    delete short.TWD
+    vi.stubGlobal('fetch', served(short))
+
+    await expect(fetchFxRates()).rejects.toThrow('missing TWD')
+  })
+
+  it('refuses a response the feed did not call a success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ result: 'error' })))
+    await expect(fetchFxRates()).rejects.toThrow('not a success')
+  })
 })
 
 describe('currentRates', () => {
   it('waits for the source when there is nothing to serve', async () => {
-    const fetcher = served({ USD: 1.5 })
+    const fetcher = served(full(1.5))
     vi.stubGlobal('fetch', fetcher)
     const { env, current } = store(null)
     const { ctx } = context()
@@ -102,7 +148,7 @@ describe('currentRates', () => {
   })
 
   it('leaves a fresh quote alone', async () => {
-    const fetcher = served({ USD: 1.5 })
+    const fetcher = served(full(1.5))
     vi.stubGlobal('fetch', fetcher)
     const { env } = store(quote({ nextUpdateAt: at(60_000) }))
 
@@ -112,7 +158,7 @@ describe('currentRates', () => {
 
   /** The reader gets the number we already hold; the new one lands behind them. */
   it('serves a stale quote immediately and replaces it after the response', async () => {
-    vi.stubGlobal('fetch', served({ USD: 1.5 }))
+    vi.stubGlobal('fetch', served(full(1.5)))
     const { env, current } = store(quote())
     const { ctx, settled } = context()
 
@@ -138,7 +184,7 @@ describe('currentRates', () => {
 
   /** Parallel requests past the due time must not each fetch the same number. */
   it('collapses concurrent refreshes into one read of the source', async () => {
-    const fetcher = served({ USD: 1.5 })
+    const fetcher = served(full(1.5))
     vi.stubGlobal('fetch', fetcher)
     const { env } = store(null)
     const { ctx } = context()

@@ -16,6 +16,18 @@ export const MIN_REFRESH_INTERVAL_MS = 15 * 60 * 1000
 export const DEFAULT_QUOTE_LIFE_MS = 60 * 60 * 1000
 
 /**
+ * How long a quote is trusted at the very most.
+ *
+ * The floor bounds how often the feed may be read; this bounds how long a
+ * number may be believed. Without it a single far-future next-update time --
+ * a feed bug, a clock skew, a year typed instead of a day -- would pin every
+ * converted figure on the site to that quote indefinitely, and the only sign
+ * would be a date in the footer. A day and a half leaves room for a daily
+ * feed's own schedule and still catches a wrong timestamp within a day.
+ */
+export const MAX_QUOTE_LIFE_MS = 36 * 60 * 60 * 1000
+
+/**
  * Whether the stored quote has reached the moment its source said to come back.
  *
  * Records written before `refreshedAt` existed fall back to the quote time,
@@ -28,8 +40,8 @@ export function isDue(rates: FxRates, now: Date): boolean {
   if (now.getTime() - readAt < MIN_REFRESH_INTERVAL_MS) return false
 
   const published = rates.nextUpdateAt ? Date.parse(rates.nextUpdateAt) : NaN
-  const due = Number.isFinite(published) ? published : readAt + DEFAULT_QUOTE_LIFE_MS
-  return now.getTime() >= due
+  const claimed = Number.isFinite(published) ? published : readAt + DEFAULT_QUOTE_LIFE_MS
+  return now.getTime() >= Math.min(claimed, readAt + MAX_QUOTE_LIFE_MS)
 }
 
 /**
