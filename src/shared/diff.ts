@@ -10,8 +10,11 @@ export interface PricePoint {
   observedOn: string
 }
 
-const idOf = (o: { marketId: string; familyId: string; store: string; configKey: string }): string =>
-  `${o.marketId} ${o.store} ${o.familyId} ${o.configKey}`
+// A snapshot written before education prices existed has no `store`, and
+// treating that as a distinct value would make every one of its offers look
+// newly changed — tens of thousands of spurious history rows on one sweep.
+const idOf = (o: { marketId: string; familyId: string; store?: string; configKey: string }): string =>
+  `${o.marketId} ${o.store ?? 'retail'} ${o.familyId} ${o.configKey}`
 
 /**
  * Reduce a full snapshot to the rows worth storing.
@@ -34,7 +37,7 @@ export function changedPoints(previous: Offer[], current: Offer[], observedOn: s
       {
         marketId: offer.marketId,
         familyId: offer.familyId,
-        store: offer.store,
+        store: offer.store ?? 'retail',
         configKey: offer.configKey,
         currency: offer.currency,
         amount: offer.amount,

@@ -8,10 +8,12 @@ import type { Offer, Snapshot } from '../shared/types'
 import {
   getPlan,
   getRaw,
+  getPendingHistory,
   getSnapshot,
   getStructures,
   getSweepState,
   putFx,
+  putPendingHistory,
   putPlan,
   putRaw,
   putSnapshot,
@@ -25,6 +27,15 @@ const today = (now: Date): string => now.toISOString().slice(0, 10)
 /** Do whichever tier of work is most overdue, or nothing. */
 export async function runNextStep(env: Env, now = new Date()): Promise<string> {
   const state = await getSweepState(env)
+
+  // Parked history is drained first: it is already-known truth waiting to be
+  // written, and leaving it queued while sweeps append more only grows it.
+  const pending = await getPendingHistory(env)
+  if (pending.length > 0) {
+    const left = await recordHistory(env, pending)
+    await putPendingHistory(env, left)
+    return `history: wrote ${pending.length - left.length} parked rows, ${left.length} left`
+  }
 
   switch (chooseWork(state, now)) {
     case 'continue-sweep':
@@ -234,22 +245,44 @@ async function stepAssemble(env: Env, now: Date): Promise<string> {
   await putSnapshot(env, snapshot)
 
   const points = changedPoints(previous?.offers ?? [], offers, today(now))
-  await recordHistory(env, points)
+  const pending = await recordHistory(env, points)
+  await putPendingHistory(env, pending)
 
-  return `assembled ${offers.length} offers from ${snapshot.markets.length} markets, ${points.length} price changes`
+  const carried = pending.length ? `, ${pending.length} rows carried to later ticks` : ''
+  return `assembled ${offers.length} offers from ${snapshot.markets.length} markets, ${points.length} price changes${carried}`
 }
 
-/** D1 caps how many statements one batch can carry, so write in chunks. */
-async function recordHistory(env: Env, points: PricePoint[]): Promise<void> {
+/**
+ * How many history rows one invocation may write.
+ *
+ * Every D1 batch is a subrequest, drawn from the same per-invocation allowance
+ * as `fetch`. A first sweep, or any sweep after the shape of an offer changes,
+ * reports every price as new — tens of thousands of rows — which at a hundred
+ * rows a batch is far past the cap. Overflow is parked and drained by later
+ * ticks rather than aborting the invocation.
+ */
+const HISTORY_ROWS_PER_BATCH = 500
+const HISTORY_BATCHES_PER_TICK = 8
+
+/**
+ * Write what fits and hand back what did not.
+ *
+ * The snapshot is stored before this runs, so an invocation killed here would
+ * leave prices published and history silently missing — the one outcome the
+ * change-only design exists to prevent.
+ */
+async function recordHistory(env: Env, points: PricePoint[]): Promise<PricePoint[]> {
   const statement = env.HISTORY.prepare(
     `INSERT OR REPLACE INTO price_point
        (market_id, family_id, store, config_key, currency, amount, observed_on)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
-  for (let i = 0; i < points.length; i += 100) {
+
+  const writable = Math.min(points.length, HISTORY_ROWS_PER_BATCH * HISTORY_BATCHES_PER_TICK)
+  for (let i = 0; i < writable; i += HISTORY_ROWS_PER_BATCH) {
     await env.HISTORY.batch(
       points
-        .slice(i, i + 100)
+        .slice(i, i + HISTORY_ROWS_PER_BATCH)
         .map((p) =>
           statement.bind(
             p.marketId,
@@ -263,6 +296,8 @@ async function recordHistory(env: Env, points: PricePoint[]): Promise<void> {
         ),
     )
   }
+
+  return points.slice(writable)
 }
 
 export type { Offer }

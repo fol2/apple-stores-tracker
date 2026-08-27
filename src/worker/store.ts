@@ -1,5 +1,6 @@
 import type { FamilyStructures, MarketCollection } from '../scrape/sweep'
 import type { SweepStep } from '../shared/plan'
+import type { PricePoint } from '../shared/diff'
 import type { FxRates, Snapshot } from '../shared/types'
 
 export interface Env {
@@ -20,6 +21,7 @@ export const KEYS = {
   snapshot: 'snapshot:latest',
   fx: 'fx:latest',
   sweep: 'sweep:state',
+  pendingHistory: 'history:pending',
 } as const
 
 const readJson = async <T>(kv: KVNamespace, key: string): Promise<T | null> =>
@@ -35,6 +37,11 @@ export const getRaw = (env: Env, key: string) =>
   readJson<MarketCollection>(env.PRICES, KEYS.raw(key))
 export const putRaw = (env: Env, key: string, v: MarketCollection) =>
   writeJson(env.PRICES, KEYS.raw(key), v)
+
+export const getPendingHistory = async (env: Env): Promise<PricePoint[]> =>
+  (await readJson<PricePoint[]>(env.PRICES, KEYS.pendingHistory)) ?? []
+export const putPendingHistory = (env: Env, v: PricePoint[]) =>
+  writeJson(env.PRICES, KEYS.pendingHistory, v)
 
 export const getPlan = (env: Env) => readJson<SweepStep[]>(env.PRICES, KEYS.plan)
 export const putPlan = (env: Env, v: SweepStep[]) => writeJson(env.PRICES, KEYS.plan, v)

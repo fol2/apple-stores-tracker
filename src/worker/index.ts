@@ -88,18 +88,19 @@ export default {
     if (url.pathname === '/api/history') {
       const familyId = url.searchParams.get('family')
       const configKey = url.searchParams.get('config')
+      const marketId = url.searchParams.get('market')
       if (!familyId || !configKey) {
         return json({ error: 'family and config are required' }, 60)
       }
       const { results } = await env.HISTORY.prepare(
         `SELECT market_id AS marketId, store, currency, amount, observed_on AS observedOn
            FROM price_point
-          WHERE family_id = ? AND config_key = ?
+          WHERE family_id = ? AND config_key = ? AND (?3 IS NULL OR market_id = ?3)
           ORDER BY observed_on ASC`,
       )
-        .bind(familyId, configKey)
+        .bind(familyId, configKey, marketId)
         .all()
-      return json({ familyId, configKey, points: results }, 900)
+      return json({ familyId, configKey, marketId, points: results }, 900)
     }
 
     if (url.pathname === '/api/status') {

@@ -281,3 +281,30 @@ describe('offers written before education pricing existed', () => {
     expect(uk.isEducation).toBe(false)
   })
 })
+
+describe('history rows for offers with no store', () => {
+  /**
+   * The flood this prevents: a snapshot written before education prices had no
+   * `store`, so comparing it with a new one made every offer look changed —
+   * tens of thousands of rows in the invocation that can least afford them.
+   */
+  it('treats a missing store as retail on both sides', () => {
+    const before = [{ ...offer('uk', 'GBP', 899) }] as Offer[]
+    delete (before[0] as Partial<Offer>).store
+    const after = [offer('uk', 'GBP', 899)]
+    expect(changedPoints(before, after, '2026-08-27')).toEqual([])
+  })
+
+  it('still records a real change across that boundary', () => {
+    const before = [{ ...offer('uk', 'GBP', 899) }] as Offer[]
+    delete (before[0] as Partial<Offer>).store
+    expect(changedPoints(before, [offer('uk', 'GBP', 799)], '2026-08-27')).toHaveLength(1)
+  })
+
+  it('keeps education distinct from retail', () => {
+    const before = [offer('uk', 'GBP', 899)]
+    const after = [offer('uk', 'GBP', 899), offer('uk', 'GBP', 799, 'education')]
+    const points = changedPoints(before, after, '2026-08-27')
+    expect(points.map((p) => p.store)).toEqual(['education'])
+  })
+})

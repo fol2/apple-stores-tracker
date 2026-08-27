@@ -224,12 +224,9 @@ function Prices() {
 
             {cheapest.market.pricesExcludeTax && (
               <p className="mt-3 rounded border border-high/40 bg-high/[0.07] px-3 py-2 text-sm">
-                {cheapest.market.name} prices exclude sales tax, which is added at checkout and
-                varies by state. Expect roughly{' '}
-                <span className="tnum font-semibold">
-                  {formatIn(cheapest.displayAmount * 0.08, currency)}
-                </span>{' '}
-                more at around 8%.
+                {cheapest.market.name} prices exclude sales tax. It is added at checkout and set
+                locally, from nothing in a few states to over 10% elsewhere, so the amount you
+                pay depends on where you buy.
               </p>
             )}
 
