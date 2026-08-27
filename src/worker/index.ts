@@ -3,7 +3,7 @@ import { BASE_CURRENCY, MARKETS } from '../shared/markets'
 import { REFUND_POLICIES } from '../shared/refunds'
 import { handleMcp } from './mcp'
 import { runNextStep } from './sweep-runner'
-import { getFx, getSnapshot, type Env } from './store'
+import { getFx, getSnapshot, getSweepState, type Env } from './store'
 
 const json = (body: unknown, maxAge: number): Response =>
   Response.json(body, {
@@ -103,13 +103,26 @@ export default {
     }
 
     if (url.pathname === '/api/status') {
-      const snapshot = await getSnapshot(env)
+      const [snapshot, fx, state] = await Promise.all([
+        getSnapshot(env),
+        getFx(env),
+        getSweepState(env),
+      ])
       return json(
         {
           collectedAt: snapshot?.collectedAt ?? null,
           markets: snapshot?.markets ?? [],
           offers: snapshot?.offers.length ?? 0,
           errors: snapshot?.errors.length ?? 0,
+          rates: { fetchedAt: fx?.fetchedAt ?? null, refreshedAt: state.fxAt },
+          changeDetection: { lastProbeAt: state.probeAt, position: state.probeCursor },
+          fullSweep: {
+            inProgress: state.step >= 0,
+            step: state.step >= 0 ? state.step : null,
+            startedAt: state.startedAt,
+            finishedAt: state.finishedAt,
+            reason: state.reason,
+          },
         },
         60,
       )

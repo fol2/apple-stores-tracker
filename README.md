@@ -41,23 +41,45 @@ across all workers when Apple answers a burst with HTTP 541.
 
 ## How it runs
 
-One Cloudflare Worker serves the site, the API and the MCP endpoint, and runs the sweep on
-a cron trigger.
+One Cloudflare Worker serves the site, the API and the MCP endpoint, and does its
+collecting from a cron trigger. The work is layered, because the three things it needs to
+keep current move at completely different speeds.
 
 ```
-cron (*/15) ─► one step per tick ─┬─ discover  : read all 29 selectors once
-                                  ├─ <market>  : price one market  → KV raw:<id>
-                                  └─ assemble  : merge, diff, store → KV snapshot:latest
-                                                                      D1 price_point
+cron (*/3) ─► whichever tier is most overdue
+  │
+  ├─ 1. continue a sweep   in progress?      one planned batch
+  ├─ 2. refresh rates      > 1 hour old?     1 request
+  ├─ 3. full sweep         > 7 days old?     ~90 batches, ~4.6 hours
+  ├─ 4. probe              > 2 hours old?    one rotating slice, ~15 requests
+  └─    otherwise idle
 ```
 
-A full pass is 17 steps, then the Worker idles until the last pass is twelve hours old.
-Splitting by market keeps each invocation well inside the subrequest limit and makes a
-failed market a cheap retry rather than a lost sweep.
+**Rates** cost one request and every converted figure depends on them, so they refresh
+hourly. **Prices** cost ~1,245 requests to read in full but change a handful of times a
+year, so scanning on a timer would spend that budget over and over to learn that nothing
+happened. Between the two sits the **probe**: it re-reads one rotating slice and compares
+it with the stored snapshot. Apple moves many prices at once when it moves any, so a slice
+is enough to notice, and a full sweep only runs when there is something to find. A forced
+weekly sweep is the backstop, since comparing prices cannot reveal a product Apple has
+only just added.
+
+Steady state is roughly 200 requests a day rather than 2,500.
+
+A sweep is split into ~90 planned batches, each sized to fit one invocation's subrequest
+allowance, so a failed batch is a cheap retry rather than a lost pass. `GET /api/status`
+reports where each tier has got to.
 
 **KV** holds the snapshot — one blob, read on every request, cached at the edge.
 **D1** holds history, and only rows that *changed*: Apple prices barely move, so writing
 every configuration every day would be ~90k rows to record that nothing happened.
+
+Education prices come from Apple's parallel `/<market>-edu` store. Only one market's
+education price can apply to any one buyer, since you can only be a student in one
+country, so the site adds a second row for the market you claim rather than quietly
+substituting the number. iPhone is skipped there: it has no education price, and Apple
+answers `541` for it — the same status it uses for throttling — so asking costs six
+retries per family per market and yields nothing.
 
 Exchange rates come from `open.er-api.com` (keyless, daily). It is the only free feed that
 covers every currency here — the ECB feeds, and anything built on them, have no TWD.
@@ -85,8 +107,14 @@ npm run deploy
 ```
 
 The custom domain is declared in `wrangler.jsonc`; Wrangler creates the DNS record in the
-`eugnel.com` zone on first deploy. Scheduled runs need the Workers Paid plan — parsing 29
-selector pages does not fit the free plan's 10ms CPU budget.
+`eugnel.com` zone on first deploy.
+
+This runs on the **Workers free plan**, which is what the batching exists for: an
+invocation there gets 50 subrequests, and a retry spends from the same allowance as a
+first attempt. `RequestBudget` enforces a ceiling of 30 inside the fetch helper, and
+`planSweep` sizes each batch to 15, so throttling costs a family rather than the whole
+invocation. Exceeding the cap does not fail one request — it aborts the invocation and
+discards everything it had already collected.
 
 ## For agents
 

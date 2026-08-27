@@ -208,32 +208,41 @@ describe('education pricing', () => {
     const { rows } = compare(offers, fx)
     expect(rows.filter((r) => r.isEducation)).toHaveLength(0)
     expect(rows.find((r) => r.market.id === 'uk')!.offer!.amount).toBe(899)
+    expect(rows).toHaveLength(MARKETS.length)
   })
 
-  it('applies the education price to the one claimed market only', () => {
+  it('adds a row for the claimed market rather than replacing one', () => {
     const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
-    const uk = rows.find((r) => r.market.id === 'uk')!
-    const us = rows.find((r) => r.market.id === 'us')!
-    expect(uk.isEducation).toBe(true)
-    expect(uk.offer!.amount).toBe(799)
-    // You cannot be a student in two countries at once.
-    expect(us.isEducation).toBe(false)
-    expect(us.offer!.amount).toBe(899)
+    const uk = rows.filter((r) => r.market.id === 'uk')
+    // Both prices stay visible, so the discount reads as a gap.
+    expect(uk).toHaveLength(2)
+    expect(uk.find((r) => r.isEducation)!.offer!.amount).toBe(799)
+    expect(uk.find((r) => !r.isEducation)!.offer!.amount).toBe(899)
   })
 
-  it('falls back to retail where Apple has no education price', () => {
+  it('claims one market only, since you study in one country', () => {
+    const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
+    expect(rows.filter((r) => r.isEducation).map((r) => r.market.id)).toEqual(['uk'])
+    expect(rows.filter((r) => r.market.id === 'us')).toHaveLength(1)
+  })
+
+  it('records what retail costs, so the saving can be shown', () => {
+    const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
+    const edu = rows.find((r) => r.isEducation)!
+    expect(edu.retailDisplayAmount).toBe(899)
+    expect(edu.retailDisplayAmount! - edu.displayAmount!).toBe(100)
+  })
+
+  it('adds no row where Apple has no education price', () => {
     const { rows } = compare([offer('de', 'EUR', 1049)], fx, { educationMarketId: 'de' })
-    const de = rows.find((r) => r.market.id === 'de')!
-    expect(de.isEducation).toBe(false)
-    expect(de.offer!.amount).toBe(1049)
+    expect(rows.filter((r) => r.market.id === 'de')).toHaveLength(1)
+    expect(rows.some((r) => r.isEducation)).toBe(false)
   })
 
-  it('narrows the claimed market’s gap to the cheapest', () => {
-    const ukAt = (educationMarketId: string | null) =>
-      compare(offers, fx, { educationMarketId }).rows.find((r) => r.market.id === 'uk')!
-        .displayAmount!
-    expect(ukAt('uk')).toBeLessThan(ukAt(null))
-    expect(ukAt('uk')).toBe(799)
+  it('ranks the education row on price like any other', () => {
+    const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
+    const amounts = rows.filter((r) => r.offer).map((r) => r.displayAmount!)
+    expect(amounts).toEqual([...amounts].sort((a, b) => a - b))
   })
 })
 

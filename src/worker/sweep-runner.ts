@@ -1,5 +1,6 @@
 import { MARKETS, STORES } from '../shared/markets'
 import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
+import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
 import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
 import { fetchFxRates } from '../scrape/fx'
@@ -19,29 +20,123 @@ import {
   type Env,
 } from './store'
 
-/** Idle this long after a pass finishes. List prices are not volatile. */
-export const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000
-
 const today = (now: Date): string => now.toISOString().slice(0, 10)
 
-/** Run whichever step is next, or nothing if the last pass is still fresh. */
+/** Do whichever tier of work is most overdue, or nothing. */
 export async function runNextStep(env: Env, now = new Date()): Promise<string> {
   const state = await getSweepState(env)
 
-  if (state.step < 0) {
-    const last = state.finishedAt ? Date.parse(state.finishedAt) : 0
-    if (now.getTime() - last < SWEEP_INTERVAL_MS) return 'idle: last sweep is still fresh'
-    await putSweepState(env, { step: 0, startedAt: now.toISOString(), finishedAt: state.finishedAt })
-    return runStep(env, 0, now)
+  switch (chooseWork(state, now)) {
+    case 'continue-sweep':
+      return runStep(env, state.step, now)
+    case 'refresh-rates':
+      return stepFx(env, now)
+    case 'start-sweep':
+      return startSweep(env, now, 'scheduled: catalogue is due a full read')
+    case 'probe':
+      return stepProbe(env, now)
+    default:
+      return 'idle: rates fresh, prices unchanged'
+  }
+}
+
+async function startSweep(env: Env, now: Date, reason: string): Promise<string> {
+  const state = await getSweepState(env)
+  await putSweepState(env, { ...state, step: 0, startedAt: now.toISOString(), reason })
+  return `${reason} -> ${await runStep(env, 0, now)}`
+}
+
+/** One request, and it keeps every converted figure on the site honest. */
+async function stepFx(env: Env, now: Date): Promise<string> {
+  const state = await getSweepState(env)
+  try {
+    const rates = await fetchFxRates()
+    await putFx(env, rates)
+    await putSweepState(env, { ...state, fxAt: now.toISOString() })
+    return `fx: refreshed, quoted ${rates.fetchedAt}`
+  } catch (error) {
+    // Record the attempt so a failing rate source cannot crowd out the probe.
+    await putSweepState(env, { ...state, fxAt: now.toISOString() })
+    return `fx: failed, keeping previous rates (${error})`
+  }
+}
+
+/**
+ * Re-read one planned slice and compare it with what we already hold.
+ *
+ * Only configurations present on both sides are compared: a family that failed
+ * to collect is a collection error, not a price change, and treating it as one
+ * would trigger a full sweep every time Apple throttled us.
+ */
+async function stepProbe(env: Env, now: Date): Promise<string> {
+  const state = await getSweepState(env)
+  const budget = new RequestBudget(REQUESTS_PER_TICK)
+
+  const [plan, snapshot, structures] = await Promise.all([
+    getPlan(env),
+    getSnapshot(env),
+    getStructures(env),
+  ])
+
+  if (!plan?.length || !snapshot || !structures) {
+    return startSweep(env, now, 'first run: nothing to compare against yet')
   }
 
-  return runStep(env, state.step, now)
+  const step = plan[state.probeCursor % plan.length]
+  const market = MARKETS.find((m) => m.id === step.marketId)
+  const wanted = structures.structures.filter((s) => step.familyIds.includes(s.familyId))
+
+  const advanceProbe = (extra: Partial<typeof state> = {}) =>
+    putSweepState(env, {
+      ...state,
+      probeAt: now.toISOString(),
+      probeCursor: (state.probeCursor + 1) % plan.length,
+      ...extra,
+    })
+
+  if (!market || wanted.length === 0) {
+    await advanceProbe()
+    return 'probe: nothing to sample in this slice'
+  }
+
+  const known = new Map(
+    snapshot.offers
+      .filter((o) => o.marketId === step.marketId && (o.store ?? 'retail') === step.store)
+      .map((o) => [`${o.familyId} ${o.configKey}`, o.amount]),
+  )
+
+  let collection
+  try {
+    collection = await collectFamilies(market, step.store, wanted, budget)
+  } catch (error) {
+    await advanceProbe()
+    return `probe: ${step.marketId}:${step.store} could not be read (${error})`
+  }
+
+  const moved = collection.offers.filter((offer) => {
+    const before = known.get(`${offer.familyId} ${offer.configKey}`)
+    return before !== undefined && before !== offer.amount
+  })
+
+  await advanceProbe()
+
+  if (moved.length === 0) {
+    return `probe: ${step.marketId}:${step.store} unchanged across ${collection.offers.length} prices`
+  }
+
+  const example = moved[0]
+  return startSweep(
+    env,
+    now,
+    `probe: ${moved.length} price(s) moved in ${step.marketId}:${step.store}, e.g. ${example.familyId} ${example.currency} ${example.amount}`,
+  )
 }
 
 async function advance(env: Env, step: number, total: number, now: Date): Promise<void> {
   const done = step + 1 >= total
   const state = await getSweepState(env)
   await putSweepState(env, {
+    ...state,
     step: done ? -1 : step + 1,
     startedAt: done ? null : state.startedAt,
     finishedAt: done ? now.toISOString() : state.finishedAt,
@@ -67,7 +162,8 @@ async function runStep(env: Env, step: number, now: Date): Promise<string> {
   if (!plan) {
     // No plan means discovery never landed; restart the pass rather than
     // spinning through steps that have nothing to price.
-    await putSweepState(env, { step: 0, startedAt: now.toISOString(), finishedAt: null })
+    const state = await getSweepState(env)
+    await putSweepState(env, { ...state, step: 0, startedAt: now.toISOString() })
     return 'no plan; restarting at discovery'
   }
 
@@ -136,14 +232,6 @@ async function stepAssemble(env: Env, now: Date): Promise<string> {
 
   const previous = await getSnapshot(env)
   await putSnapshot(env, snapshot)
-
-  // FX is refreshed here rather than per-market: it moves daily, and one
-  // failed rate fetch should not cost us the price data.
-  try {
-    await putFx(env, await fetchFxRates())
-  } catch {
-    /* keep the previous rates; the UI shows how old they are */
-  }
 
   const points = changedPoints(previous?.offers ?? [], offers, today(now))
   await recordHistory(env, points)

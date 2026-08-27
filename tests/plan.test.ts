@@ -76,3 +76,20 @@ describe('planSweep', () => {
     for (const id of iphones) expect(eduFamilies).not.toContain(id)
   })
 })
+
+describe('packing efficiency', () => {
+  /**
+   * Family costs are lopsided, so naive in-order batching strands expensive
+   * families in steps of their own. That is not a correctness bug — every step
+   * still fits — but it doubled the length of a pass, which is the difference
+   * between prices refreshing twice a day and once.
+   */
+  it('does not leave steps mostly empty', () => {
+    const all = structures()
+    const steps = planSweep(all)
+    const total = steps.reduce((sum, step) => sum + costOf(step, all), 0)
+    const perfect = Math.ceil(total / REQUESTS_PER_STEP)
+    // Within a third of the theoretical minimum number of steps.
+    expect(steps.length).toBeLessThanOrEqual(Math.ceil(perfect * 1.34))
+  })
+})

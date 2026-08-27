@@ -37,32 +37,42 @@ export const familyRequestCost = (structure: FamilyStructure): number =>
  * Costs are read from the discovered structures rather than assumed, so a
  * family that gains a chip variant makes its own step smaller instead of
  * quietly pushing the step over the limit.
+ *
+ * Packing is first-fit-decreasing, because family costs are lopsided: a
+ * MacBook Pro can cost a dozen requests while a HomePod costs one. Walking the
+ * catalogue in its natural order strands a big family in a step of its own and
+ * leaves the rest half empty — placing the expensive ones first, then filling
+ * the gaps with cheap ones, cut a real sweep from 210 steps to well under half
+ * that, and every step still fits.
  */
 export function planSweep(structures: FamilyStructure[]): SweepStep[] {
   const steps: SweepStep[] = []
 
   for (const market of MARKETS) {
     for (const store of STORES) {
-      let batch: string[] = []
-      let cost = 0
-
-      for (const structure of structures) {
-        if (store === 'education') {
+      const families = structures
+        .filter((structure) => {
+          if (store !== 'education') return true
           const family = FAMILIES.find((f) => f.id === structure.familyId)
-          if (family && !hasEducationPricing(family)) continue
-        }
+          return !family || hasEducationPricing(family)
+        })
+        .map((structure) => ({ id: structure.familyId, cost: familyRequestCost(structure) }))
+        .sort((a, b) => b.cost - a.cost || a.id.localeCompare(b.id))
 
-        const price = familyRequestCost(structure)
-        if (batch.length > 0 && cost + price > REQUESTS_PER_STEP) {
-          steps.push({ marketId: market.id, store, familyIds: batch })
-          batch = []
-          cost = 0
+      const bins: { familyIds: string[]; cost: number }[] = []
+      for (const family of families) {
+        const bin = bins.find((b) => b.cost + family.cost <= REQUESTS_PER_STEP)
+        if (bin) {
+          bin.familyIds.push(family.id)
+          bin.cost += family.cost
+        } else {
+          // A family costing more than a whole step still gets one of its own:
+          // it cannot be split, and refusing it would drop it from the sweep.
+          bins.push({ familyIds: [family.id], cost: family.cost })
         }
-        batch.push(structure.familyId)
-        cost += price
       }
 
-      if (batch.length > 0) steps.push({ marketId: market.id, store, familyIds: batch })
+      for (const bin of bins) steps.push({ marketId: market.id, store, familyIds: bin.familyIds })
     }
   }
 

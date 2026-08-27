@@ -45,14 +45,39 @@ export const putSnapshot = (env: Env, v: Snapshot) => writeJson(env.PRICES, KEYS
 export const getFx = (env: Env) => readJson<FxRates>(env.PRICES, KEYS.fx)
 export const putFx = (env: Env, v: FxRates) => writeJson(env.PRICES, KEYS.fx, v)
 
+/**
+ * Where the three tiers of work have got to.
+ *
+ * Rates, change detection and full collection move at wildly different speeds,
+ * so each carries its own timestamp rather than sharing one clock.
+ */
 export interface SweepState {
-  /** Index into the step list; -1 means no sweep is in progress. */
+  /** Index into the plan; -1 means no full sweep is in progress. */
   step: number
   startedAt: string | null
   finishedAt: string | null
+  /** Why the current or last full sweep was started. */
+  reason: string | null
+  /** Last exchange-rate refresh. */
+  fxAt: string | null
+  /** Last change-detection probe, and where in the rotation it had reached. */
+  probeAt: string | null
+  probeCursor: number
 }
 
-export const getSweepState = async (env: Env): Promise<SweepState> =>
-  (await readJson<SweepState>(env.PRICES, KEYS.sweep)) ?? { step: -1, startedAt: null, finishedAt: null }
+const NO_SWEEP: SweepState = {
+  step: -1,
+  startedAt: null,
+  finishedAt: null,
+  reason: null,
+  fxAt: null,
+  probeAt: null,
+  probeCursor: 0,
+}
+
+export const getSweepState = async (env: Env): Promise<SweepState> => ({
+  ...NO_SWEEP,
+  ...((await readJson<Partial<SweepState>>(env.PRICES, KEYS.sweep)) ?? {}),
+})
 
 export const putSweepState = (env: Env, v: SweepState) => writeJson(env.PRICES, KEYS.sweep, v)

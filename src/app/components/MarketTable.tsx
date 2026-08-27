@@ -1,5 +1,5 @@
 import type { MarketPrice } from '../../shared/convert'
-import { formatIn, formatLocal } from '../../shared/convert'
+import { formatIn, formatLocal, rowKey } from '../../shared/convert'
 
 interface Props {
   rows: MarketPrice[]
@@ -15,14 +15,18 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[44rem] border-collapse text-sm">
+      <table className="w-full border-collapse text-sm sm:min-w-[44rem]">
         <thead>
           <tr className="border-b border-rule text-left">
             <th className="eyebrow py-2 pr-3 font-semibold">#</th>
             <th className="eyebrow py-2 pr-3 font-semibold">Market</th>
-            <th className="eyebrow py-2 pr-3 text-right font-semibold">Local price</th>
+            <th className="eyebrow hidden py-2 pr-3 text-right font-semibold sm:table-cell">
+              Local price
+            </th>
             {showRefunds && (
-              <th className="eyebrow py-2 pr-3 text-right font-semibold">Refund</th>
+              <th className="eyebrow hidden py-2 pr-3 text-right font-semibold sm:table-cell">
+                Refund
+              </th>
             )}
             <th className="eyebrow py-2 pr-3 text-right font-semibold">In {currency}</th>
             <th className="eyebrow py-2 text-right font-semibold">vs cheapest</th>
@@ -31,15 +35,19 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
         <tbody>
           {rows.map((row, index) => {
             const isHome = row.market.id === homeMarketId
+            const saved =
+              row.retailDisplayAmount != null && row.displayAmount != null
+                ? row.retailDisplayAmount - row.displayAmount
+                : null
             const gap =
               row.displayAmount !== null && cheapest !== null ? row.displayAmount - cheapest : null
 
             return (
               <tr
-                key={row.market.id}
+                key={rowKey(row)}
                 className={[
                   'border-b border-rule/60',
-                  isHome ? 'bg-home/[0.06]' : '',
+                  row.isEducation ? 'bg-low/[0.05]' : isHome ? 'bg-home/[0.06]' : '',
                   row.offer ? '' : 'text-soft',
                 ].join(' ')}
               >
@@ -64,15 +72,32 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
                   {isHome && <span className="ml-2 text-[0.625rem] text-home">home</span>}
                   {row.isEducation && (
                     <span
-                      className="ml-2 rounded-full border border-low/50 px-1.5 py-0.5 text-[0.625rem] text-low"
-                      title="Apple education store price. Eligibility is verified at checkout."
+                      className="ml-2 rounded-full border border-low/50 bg-low/10 px-1.5 py-0.5 text-[0.625rem] font-semibold text-low"
+                      title="Apple education store price. Apple verifies eligibility at checkout."
                     >
-                      edu
+                      education
                     </span>
                   )}
+                  {saved != null && saved > 0 && (
+                    <span className="tnum ml-2 text-[0.625rem] text-low">
+                      saves {formatIn(saved, currency)}
+                    </span>
+                  )}
+
+                  {/* What the hidden columns would have said, for narrow screens. */}
+                  <span className="tnum mt-0.5 block text-xs text-soft sm:hidden">
+                    {row.offer ? formatLocal(row.offer.amount, row.offer.currency) : 'not sold here'}
+                    {row.market.pricesExcludeTax && <span className="text-high"> +tax</span>}
+                    {showRefunds && row.policy.available && (
+                      <span className={row.policy.appleConfirmed ? 'text-low' : ''}>
+                        {' · '}−{percent(row.policy.rate)} refund
+                        {!row.policy.appleConfirmed && '?'}
+                      </span>
+                    )}
+                  </span>
                 </td>
 
-                <td className="tnum py-2.5 pr-3 text-right">
+                <td className="tnum hidden py-2.5 pr-3 text-right sm:table-cell">
                   {row.offer ? (
                     <>
                       {formatLocal(row.offer.amount, row.offer.currency)}
@@ -93,7 +118,7 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
                 </td>
 
                 {showRefunds && (
-                  <td className="tnum py-2.5 pr-3 text-right">
+                  <td className="tnum hidden py-2.5 pr-3 text-right sm:table-cell">
                     {row.policy.available ? (
                       <span
                         className={row.policy.appleConfirmed ? 'text-low' : 'text-soft'}

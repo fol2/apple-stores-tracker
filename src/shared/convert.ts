@@ -12,7 +12,13 @@ export interface MarketPrice {
   displayAmount: number | null
   /** Whether this row is quoted from Apple's education store. */
   isEducation: boolean
+  /** What the same build costs at retail, on an education row. */
+  retailDisplayAmount?: number | null
 }
+
+/** Rows are per market and store, so a market can appear twice. */
+export const rowKey = (row: MarketPrice): string =>
+  `${row.market.id}:${row.isEducation ? 'education' : 'retail'}`
 
 export interface Comparison {
   rows: MarketPrice[]
@@ -89,20 +95,9 @@ export function formatIn(amount: number, currency: string, locale = 'en-GB'): st
 export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = {}): Comparison {
   const { applyRefunds = false, currency = BASE_CURRENCY, educationMarketId = null } = options
 
-  const rows: MarketPrice[] = MARKETS.map((market) => {
-    // Education pricing applies only where the viewer says they qualify, and
-    // falls back to retail if Apple has no education price for this build.
-    const wantEducation = market.id === educationMarketId
-    const forMarket = offers.filter((o) => o.marketId === market.id)
-    const education = forMarket.find((o) => o.store === 'education')
-    // A snapshot collected before education pricing has no `store` at all;
-    // treat those as retail rather than discarding the whole market.
-    const retail = forMarket.find((o) => o.store !== 'education')
-    const offer = (wantEducation ? education ?? retail : retail) ?? undefined
-
+  const toRow = (market: Market, offer: Offer | undefined): MarketPrice => {
     const policy = refundPolicy(market.id)
     const localAmount = offer && applyRefunds ? afterRefund(offer.amount, policy) : offer?.amount
-
     return {
       market,
       offer,
@@ -114,7 +109,30 @@ export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = 
           : convertBetween(localAmount, offer!.currency, currency, fx),
       isEducation: offer?.store === 'education',
     }
-  }).sort((a, b) => (a.displayAmount ?? Infinity) - (b.displayAmount ?? Infinity))
+  }
+
+  const rows: MarketPrice[] = MARKETS.map((market) => {
+    // A snapshot collected before education pricing has no `store` at all;
+    // treat those as retail rather than discarding the whole market.
+    const retail = offers.find((o) => o.marketId === market.id && o.store !== 'education')
+    return toRow(market, retail)
+  })
+
+  // The claimed market gets a second row rather than a substituted one, so the
+  // discount is visible as a gap instead of silently changing a number. Only
+  // one market can be claimed: you can only be a student in one country.
+  if (educationMarketId) {
+    const market = MARKETS.find((m) => m.id === educationMarketId)
+    const education = offers.find(
+      (o) => o.marketId === educationMarketId && o.store === 'education',
+    )
+    if (market && education) {
+      const retailRow = rows.find((r) => r.market.id === educationMarketId)
+      rows.push({ ...toRow(market, education), retailDisplayAmount: retailRow?.displayAmount ?? null })
+    }
+  }
+
+  rows.sort((a, b) => (a.displayAmount ?? Infinity) - (b.displayAmount ?? Infinity))
 
   const priced = rows.map((r) => r.displayAmount).filter((v): v is number => v !== null)
 

@@ -1,1 +1,1 @@
-{"root":["./tests/apple.test.ts","./tests/mcp.test.ts","./tests/plan.test.ts","./tests/shared.test.ts","./vite.config.ts","./vitest.config.ts"],"version":"5.9.3"}
+{"root":["./tests/apple.test.ts","./tests/mcp.test.ts","./tests/plan.test.ts","./tests/schedule.test.ts","./tests/shared.test.ts","./vite.config.ts","./vitest.config.ts"],"version":"5.9.3"}
