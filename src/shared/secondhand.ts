@@ -17,6 +17,15 @@ interface FamilyGrid {
    * generation. Used only when nothing current is in stock — see `matchRefurb`.
    */
   lineage?: RegExp
+  /**
+   * Whether `model` admits exactly one generation, as `/^iphone16$/` does.
+   *
+   * Declared rather than inferred. This was read off the pattern text by
+   * testing it for a digit, which is true of `/^ipad(?:\d{4})?$/` because of
+   * the `{4}` quantifier — so the one family whose generation nothing else
+   * pins was the one reported as pinned.
+   */
+  generationInToken?: true
 }
 
 const REFURB_MODELS: Record<string, FamilyGrid> = {
@@ -30,10 +39,10 @@ const REFURB_MODELS: Record<string, FamilyGrid> = {
   'ipad-air': { category: 'ipad', model: /^ipadair/ },
   'ipad-mini': { category: 'ipad', model: /^ipadmini/ },
   ipad: { category: 'ipad', model: /^ipad(?:\d{4})?$/ },
-  'iphone-17': { category: 'iphone', model: /^iphone17$/, lineage: /^iphone\d+$/ },
-  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/, lineage: /^iphone\d+pro/ },
-  'iphone-17e': { category: 'iphone', model: /^iphone17e$/, lineage: /^iphone\d+e$/ },
-  'iphone-16': { category: 'iphone', model: /^iphone16$/, lineage: /^iphone\d+$/ },
+  'iphone-17': { category: 'iphone', model: /^iphone17$/, lineage: /^iphone\d+$/, generationInToken: true },
+  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/, lineage: /^iphone\d+pro/, generationInToken: true },
+  'iphone-17e': { category: 'iphone', model: /^iphone17e$/, lineage: /^iphone\d+e$/, generationInToken: true },
+  'iphone-16': { category: 'iphone', model: /^iphone16$/, lineage: /^iphone\d+$/, generationInToken: true },
   'iphone-air': { category: 'iphone', model: /^iphoneair/ },
   // `watchse` alone would also match `watchseries10`, so the SE needs its digit.
   'apple-watch': { category: 'watch', model: /^watchseries/ },
@@ -238,8 +247,9 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
   if (!family) return null
 
   return (
-    search(offer, listings, family.model, true) ??
-    search(offer, listings, family.lineage ?? family.model, false)
+    search(offer, listings, family.model, true, family.generationInToken === true) ??
+    // The fallback deliberately spans generations, so its token never pins one.
+    search(offer, listings, family.lineage ?? family.model, false, false)
   )
 }
 
@@ -254,6 +264,7 @@ function search(
   listings: RefurbListing[],
   model: RegExp,
   sameChip: boolean,
+  generationInToken: boolean,
 ): SecondHandMatch | null {
   const wanted: Wanted[] = []
   for (const dimension of offer.dimensions) {
@@ -323,7 +334,13 @@ function search(
    * so. Release year already carries this for the grids that publish it.
    */
   const generationPinned =
-    /\d/.test(model.source) || processor.chip !== undefined || processor.cpu !== undefined
+    generationInToken ||
+    // A chip names a generation; core counts do not. An M4 and an M5 both come
+    // in 10-core CPU, 10-core GPU, so agreeing on cores proves the tier and
+    // says nothing about the year. Every unit must state its chip, too —
+    // `processorsAgree` lets a silent title through.
+    (processor.chip !== undefined &&
+      matches.every((l) => processorInTitle(l.title).chip !== undefined))
   if (!generationPinned && !unpinned.includes(labelFor('dimensionRelYear'))) {
     unpinned.push(labelFor('refurbClearModel'))
   }

@@ -21,7 +21,7 @@ const offer = (familyId: string, dimensions: [string, string][]): Offer => ({
 
 describe('parseRefurbGrid', () => {
   it('reads every unit Apple has, from one page', () => {
-    expect(listings).toHaveLength(14)
+    expect(listings).toHaveLength(16)
     expect(listings[0]).toMatchObject({ partNumber: 'G1MLBB/A', amount: 2669, currency: 'GBP' })
   })
 
@@ -242,6 +242,41 @@ describe('matchRefurb', () => {
 
     expect(watch.unpinned).toContain('generation')
     expect(watch.exact).toBe(false)
+  })
+
+  /**
+   * Whether a token names a generation is declared, not read off the pattern.
+   * `/^ipad(?:\d{4})?$/` contains the digit 4 in its `{4}` quantifier, and an
+   * earlier version tested the pattern text — so the base iPad, the one family
+   * with no chip in its configuration and nothing else to pin a generation,
+   * was the family reported as having one pinned.
+   *
+   * Apple's own base-iPad tiles happen to publish a release year, which masked
+   * it. The second unit here is that tile without the year: the shape the bug
+   * needed, and one Apple ships elsewhere in the same grid.
+   */
+  it('does not read a generation out of a quantifier', () => {
+    const base = offer('ipad', [
+      ['dimensionCapacity', '64gb'],
+      ['dimensionConnection', 'wifi'],
+    ])
+    const match = matchRefurb(base, listings)!
+
+    expect(match.listings).toHaveLength(2)
+    expect(match.exact).toBe(false)
+    expect(match.unpinned).toContain('release year')
+  })
+
+  /**
+   * Core counts identify a tier within a generation, not the generation: an M4
+   * and an M5 both come in 10-core CPU, 10-core GPU.
+   */
+  it('does not treat matching core counts as a pinned generation', () => {
+    const air = offer('macbook-air', [
+      ['chassis-dimensionScreensize', '13inch'],
+      ['processor-cpuCoreCount-gpuCoreCount', '10-10'],
+    ])
+    expect(matchRefurb(air, listings)!.exact).toBe(false)
   })
 
   /** Colour never moves the new price, so it must not hide a cheaper unit. */
