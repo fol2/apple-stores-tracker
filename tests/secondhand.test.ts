@@ -186,7 +186,56 @@ describe('matchRefurb', () => {
     // Aluminium or titanium changes the price and our configurations do not
     // say which, so a watch is never quoted as the same machine.
     expect(se.exact).toBe(false)
-    expect(se.unpinned).toEqual(['case material'])
+    expect(se.unpinned).toEqual(['case material', 'generation'])
+  })
+
+  /**
+   * Apple discontinues a model the day it announces its replacement, so the
+   * refurbished store routinely holds nothing at all for what is currently on
+   * sale. An earlier generation at the same specification is the useful answer
+   * — provided the page says that is what it is.
+   */
+  it('falls back to an earlier generation, and says so', () => {
+    const seventeen = offer('iphone-17', [['dimensionCapacity', '128gb']])
+    const match = matchRefurb(seventeen, listings)!
+
+    expect(match.basis).toBe('earlier-generation')
+    expect(match.listings.map((l) => l.model)).toEqual(['iphone16', 'iphone16'])
+    expect(match.exact).toBe(false)
+  })
+
+  /** The fallback must never reach forward, only back. */
+  it('will not offer a later generation as the earlier one', () => {
+    const fifteen = offer('iphone-15', [['dimensionCapacity', '128gb']])
+    expect(matchRefurb(fifteen, listings)).toBeNull()
+  })
+
+  /** Current stock always wins; the fallback is only for an empty shelf. */
+  it('prefers this generation when Apple has it', () => {
+    const sixteen = offer('iphone-16', [['dimensionCapacity', '128gb']])
+    const match = matchRefurb(sixteen, listings)!
+
+    expect(match.basis).toBe('this-generation')
+    expect(match.exact).toBe(true)
+  })
+
+  /**
+   * A Watch is the quiet case: `watchseries` matches every series Apple has
+   * refurbished and the family id carries no number, so a current-series
+   * configuration is priced from whatever series is in stock. That has to be
+   * reported, and it does not vary — every unit here is the same older series.
+   */
+  it('reports an unpinned generation even when every unit shares it', () => {
+    const watch = matchRefurb(
+      offer('apple-watch', [
+        ['watch_cases-dimensionCaseSize', '46mm'],
+        ['watch_cases-dimensionConnection', 'gps'],
+      ]),
+      listings,
+    )!
+
+    expect(watch.unpinned).toContain('generation')
+    expect(watch.exact).toBe(false)
   })
 
   /** Colour never moves the new price, so it must not hide a cheaper unit. */

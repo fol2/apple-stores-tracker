@@ -19,7 +19,17 @@ export type RefurbCategory = (typeof REFURB_CATEGORIES)[number]
  * rest of the specification is pinned by the facet match below, so a broad
  * token here does not loosen the comparison.
  */
-const REFURB_MODELS: Record<string, { category: RefurbCategory; model: RegExp }> = {
+interface FamilyGrid {
+  category: RefurbCategory
+  model: RegExp
+  /**
+   * The same product a generation or more back, where Apple's token names the
+   * generation. Used only when nothing current is in stock — see `matchRefurb`.
+   */
+  lineage?: RegExp
+}
+
+const REFURB_MODELS: Record<string, FamilyGrid> = {
   'macbook-air': { category: 'mac', model: /^macbookair/ },
   'macbook-pro': { category: 'mac', model: /^macbookpro/ },
   'macbook-neo': { category: 'mac', model: /^macbookneo/ },
@@ -30,10 +40,10 @@ const REFURB_MODELS: Record<string, { category: RefurbCategory; model: RegExp }>
   'ipad-air': { category: 'ipad', model: /^ipadair/ },
   'ipad-mini': { category: 'ipad', model: /^ipadmini/ },
   ipad: { category: 'ipad', model: /^ipad(?:\d{4})?$/ },
-  'iphone-17': { category: 'iphone', model: /^iphone17$/ },
-  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/ },
-  'iphone-17e': { category: 'iphone', model: /^iphone17e$/ },
-  'iphone-16': { category: 'iphone', model: /^iphone16$/ },
+  'iphone-17': { category: 'iphone', model: /^iphone17$/, lineage: /^iphone\d+$/ },
+  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/, lineage: /^iphone\d+pro/ },
+  'iphone-17e': { category: 'iphone', model: /^iphone17e$/, lineage: /^iphone\d+e$/ },
+  'iphone-16': { category: 'iphone', model: /^iphone16$/, lineage: /^iphone\d+$/ },
   'iphone-air': { category: 'iphone', model: /^iphoneair/ },
   // `watchse` alone would also match `watchseries10`, so the SE needs its digit.
   'apple-watch': { category: 'watch', model: /^watchseries/ },
@@ -98,6 +108,7 @@ const FACET_LABELS: Record<string, string> = {
   dimensionCaseMaterial: 'case material',
   dimensionColor: 'colour',
   dimensionRelYear: 'release year',
+  refurbClearModel: 'generation',
 }
 
 const labelFor = (facet: string): string => FACET_LABELS[facet] ?? facet
@@ -151,6 +162,21 @@ export function processorInTitle(title: string): Processor {
   return processor
 }
 
+/**
+ * The generation number in a family id or a grid token: `iphone-17` and
+ * `iphone17` are 17, `watchseries10` is 10, `macbookpro` is nothing.
+ */
+const generationIn = (text: string): number | undefined => {
+  const digits = /(\d+)/.exec(text)?.[1]
+  return digits ? Number(digits) : undefined
+}
+
+/** `m6` is 6. A chip number is a generation too, where a token is not. */
+const chipGeneration = (chip: string | undefined): number | undefined => {
+  const digits = chip ? /^m(\d+)/.exec(chip)?.[1] : undefined
+  return digits ? Number(digits) : undefined
+}
+
 /** Equal wherever both sides say something; silence never contradicts. */
 const processorsAgree = (a: Processor, b: Processor): boolean =>
   (!a.chip || !b.chip || a.chip === b.chip) &&
@@ -180,6 +206,13 @@ export interface SecondHandMatch {
    */
   varyingOn: string[]
   /**
+   * Whether these units are the product being priced, or the nearest earlier
+   * generation Apple still has. Apple discontinues a model the day it
+   * announces its replacement, so the refurbished store is often a generation
+   * behind the new-price catalogue — with nothing at all for the new one.
+   */
+  basis: 'this-generation' | 'earlier-generation'
+  /**
    * Whether these units are the same machine as the configuration priced
    * alongside them: at least one price-driving spec positively confirmed on
    * every unit, and no price-driving spec left unpinned.
@@ -207,6 +240,24 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
   const family = REFURB_MODELS[offer.familyId]
   if (!family) return null
 
+  return (
+    search(offer, listings, family.model, true) ??
+    search(offer, listings, family.lineage ?? family.model, false)
+  )
+}
+
+/**
+ * @param model      which grid tokens count as this family.
+ * @param sameChip   whether the unit's processor must match the configuration.
+ *                   False is the fallback pass, and every unit it returns has
+ *                   to prove it is an earlier generation.
+ */
+function search(
+  offer: Offer,
+  listings: RefurbListing[],
+  model: RegExp,
+  sameChip: boolean,
+): SecondHandMatch | null {
   const wanted: Wanted[] = []
   for (const dimension of offer.dimensions) {
     const keys = FACETS_FOR_SUFFIX[dimension.field.slice(dimension.field.lastIndexOf('-') + 1)]
@@ -214,15 +265,33 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
   }
   const processor = processorOf(offer)
 
+  const configGeneration = generationIn(offer.familyId)
+  const configChip = chipGeneration(processor.chip)
+
+  /**
+   * Strictly older, by Apple's own numbering: an iPhone 16 against an iPhone
+   * 17, an M4 against an M6. Anything that cannot prove it is behind the
+   * configuration is not offered at all, so the label is never a guess.
+   */
+  const isEarlier = (listing: RefurbListing): boolean => {
+    const generation = generationIn(listing.model)
+    const chip = chipGeneration(processorInTitle(listing.title).chip)
+    return (
+      (configGeneration !== undefined && generation !== undefined && generation < configGeneration) ||
+      (configChip !== undefined && chip !== undefined && chip < configChip)
+    )
+  }
+
   const matches = listings.filter((listing) => {
-    if (!family.model.test(listing.model)) return false
+    if (!model.test(listing.model)) return false
+    if (!sameChip && !isEarlier(listing)) return false
     for (const spec of wanted) {
       // A facet the grid does not carry for this model cannot disagree; one it
       // does carry must agree exactly.
       const key = carriedKey(spec, listing)
       if (key !== undefined && listing.dimensions[key] !== spec.value) return false
     }
-    return processorsAgree(processor, processorInTitle(listing.title))
+    return !sameChip || processorsAgree(processor, processorInTitle(listing.title))
   })
 
   if (matches.length === 0) return null
@@ -237,14 +306,30 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
     .filter((facet) => PRICE_DRIVING.has(facet) && !asked.has(facet))
     .map(labelFor)
 
+  // `refurbClearModel` is included deliberately. Apple's Watch token carries
+  // the series, and a Series 11 configuration quietly priced from Series 10
+  // stock is the whole reason this list exists.
   const varyingOn = facetsCarried
     .filter(
       (facet) =>
-        facet !== 'refurbClearModel' &&
         !asked.has(facet) &&
         new Set(matches.map((l) => l.dimensions[facet])).size > 1,
     )
     .map(labelFor)
+
+  /**
+   * A generation is pinned when the grid token names one (`iphone16`) or when
+   * the configuration named a processor for the title check to agree with.
+   * Neither holds for a Watch: `watchseries` matches every series Apple has
+   * refurbished, and our family id is just `apple-watch` — so a Series 11
+   * configuration was being priced from Series 10 stock with nothing saying
+   * so. Release year already carries this for the grids that publish it.
+   */
+  const generationPinned =
+    /\d/.test(model.source) || processor.chip !== undefined || processor.cpu !== undefined
+  if (!generationPinned && !unpinned.includes(labelFor('dimensionRelYear'))) {
+    unpinned.push(labelFor('refurbClearModel'))
+  }
 
   const checked = wanted.filter((spec) => matches.some((l) => carriedKey(spec, l) !== undefined))
   const confirmed = checked.filter((spec) => spec.keys.some((key) => PRICE_DRIVING.has(key)))
@@ -259,9 +344,12 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
     currency: sorted[0].currency,
     matchedOn,
     varyingOn,
+    basis: sameChip ? 'this-generation' : 'earlier-generation',
     // Every unit must carry and agree on each confirmed spec, and there must
     // be at least one -- otherwise nothing was verified.
+    // An earlier generation is never the same machine, whatever else lines up.
     exact:
+      sameChip &&
       unpinned.length === 0 &&
       confirmed.length > 0 &&
       confirmed.every((spec) => matches.every((l) => carriedKey(spec, l) !== undefined)),

@@ -103,6 +103,13 @@ every capacity, one of which costs a thousand pounds more than the new machine i
 next to. The page shows the gap either way and says plainly when the two prices are not
 the same machine.
 
+Apple discontinues a model the day it announces its replacement, so the refurbished store
+routinely holds nothing at all for what is currently on sale. When that happens the tab
+falls back to the nearest earlier generation at the same specification, labelled as such —
+a refurbished iPhone 15 against a new iPhone 17, not quietly presented as one. The fallback
+only runs when nothing current matched, and a unit is only offered if it can prove it is
+behind the configuration by Apple's own numbering, so the label is never a guess.
+
 Education prices come from Apple's parallel `/<market>-edu` store. Only one market's
 education price can apply to any one buyer, since you can only be a student in one
 country, so the site adds a second row for the market you claim rather than quietly

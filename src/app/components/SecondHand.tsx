@@ -102,8 +102,10 @@ export function SecondHand({
             </p>
             <p className="mt-2 max-w-xl text-soft">
               Its refurbished store carries whatever has been returned and restored, so a
-              configuration appears when a unit does and vanishes when it sells. Machines
-              Apple released recently rarely appear at all.
+              configuration appears when a unit does and vanishes when it sells. Nor does it
+              have an earlier generation at this specification — Apple discontinues a model
+              the day it announces its replacement, and a returned unit takes months to come
+              back.
             </p>
           </>
         )}
@@ -111,6 +113,7 @@ export function SecondHand({
     )
   }
 
+  const earlier = match.basis === 'earlier-generation'
   const low = inDisplay(match.low)
   const high = inDisplay(match.high)
   const newPrice = against?.displayAmount ?? null
@@ -139,6 +142,11 @@ export function SecondHand({
               ? 'one unit in stock'
               : `${match.listings.length} units in stock`}
           </span>
+          {earlier && (
+            <span className="rounded-full border border-high/50 bg-high/10 px-2 py-0.5 text-xs font-semibold text-high">
+              previous generation
+            </span>
+          )}
         </div>
 
         {/* The gap, drawn to scale against the new price it is measured from. */}
@@ -180,7 +188,15 @@ export function SecondHand({
                 </span>
               )}{' '}
               than new in {against.market.flag} {against.market.name}
-              {match.exact ? (
+              {earlier ? (
+                <>
+                  {' '}
+                  — but this is the {familyName} Apple sold before this one. It has none of
+                  the current generation refurbished, which is normal: Apple discontinues a
+                  model the day it announces its replacement, and a returned unit takes months
+                  to come back. The specification below is matched; the generation is not.
+                </>
+              ) : match.exact ? (
                 ', for the same configuration.'
               ) : (
                 <>
