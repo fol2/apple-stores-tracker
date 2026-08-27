@@ -6,6 +6,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
+    "check:governance": "node scripts/sdlc/check-contracts.mjs && node --test scripts/sdlc/route.test.mjs",
+    "ci": "npm run check:governance && npm test && npm run build",
     "dev:worker": "wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply price-history --remote",
