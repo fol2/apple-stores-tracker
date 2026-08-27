@@ -12,7 +12,12 @@ export interface SnapshotResponse {
   refunds: Record<string, RefundPolicy>
   fx: FxRates | null
   /** Second-hand listings for the one market they are collected in. */
-  refurb: { marketId: string; collectedAt: string; listings: RefurbListing[] } | null
+  refurb: {
+    marketId: string
+    collectedAt: string
+    listings: RefurbListing[]
+    errors: { category: string; message: string }[]
+  } | null
   offers: Offer[]
   errors: { marketId: string; familyId: string; message: string }[]
 }

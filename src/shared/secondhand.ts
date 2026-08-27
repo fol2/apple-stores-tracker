@@ -1,54 +1,71 @@
 import type { Offer, RefurbListing } from './types'
 
 /**
+ * Apple's refurbished store is split into these grids, one page each.
+ *
+ * The list lives here rather than in the scraper because the matcher needs it
+ * too: a family whose grid failed to load must say so, rather than say Apple
+ * has none.
+ */
+export const REFURB_CATEGORIES = ['mac', 'ipad', 'iphone', 'watch', 'appletv', 'homepod'] as const
+export type RefurbCategory = (typeof REFURB_CATEGORIES)[number]
+
+/**
  * Which refurbished-grid models belong to each family we price.
  *
  * Apple's grid uses its own model tokens, and they are not our family ids:
  * `ipadair_11` and `ipadair_13` are both the iPad Air, `macbookpro` covers
- * every size and chip. The screen size is then pinned separately by the facet
- * match below, so a broad token here does not loosen the comparison.
+ * every size and chip, and a Watch is `watchseries11`, not `applewatch`. The
+ * rest of the specification is pinned by the facet match below, so a broad
+ * token here does not loosen the comparison.
  */
-const REFURB_MODELS: Record<string, RegExp> = {
-  'macbook-air': /^macbookair/,
-  'macbook-pro': /^macbookpro/,
-  'macbook-neo': /^macbookneo/,
-  imac: /^imac/,
-  'mac-mini': /^macmini/,
-  'mac-studio': /^macstudio/,
-  'mac-pro': /^macpro/,
-  'ipad-pro': /^ipadpro/,
-  'ipad-air': /^ipadair/,
-  'ipad-mini': /^ipadmini/,
-  ipad: /^ipad(?:\d{4})?$/,
-  'iphone-17': /^iphone17$/,
-  'iphone-17-pro': /^iphone17pro/,
-  'iphone-17e': /^iphone17e$/,
-  'iphone-16': /^iphone16$/,
-  'iphone-air': /^iphoneair/,
-  'apple-watch': /^applewatchseries/,
-  'apple-watch-se': /^applewatchse/,
-  'apple-watch-ultra': /^applewatchultra/,
-  'apple-tv-4k': /^appletv/,
-  homepod: /^homepod$/,
-  'homepod-mini': /^homepodmini/,
-  'studio-display': /^studiodisplay/,
-  'apple-vision-pro': /^visionpro/,
+const REFURB_MODELS: Record<string, { category: RefurbCategory; model: RegExp }> = {
+  'macbook-air': { category: 'mac', model: /^macbookair/ },
+  'macbook-pro': { category: 'mac', model: /^macbookpro/ },
+  'macbook-neo': { category: 'mac', model: /^macbookneo/ },
+  imac: { category: 'mac', model: /^imac/ },
+  'mac-mini': { category: 'mac', model: /^macmini/ },
+  'mac-studio': { category: 'mac', model: /^macstudio/ },
+  'ipad-pro': { category: 'ipad', model: /^ipadpro/ },
+  'ipad-air': { category: 'ipad', model: /^ipadair/ },
+  'ipad-mini': { category: 'ipad', model: /^ipadmini/ },
+  ipad: { category: 'ipad', model: /^ipad(?:\d{4})?$/ },
+  'iphone-17': { category: 'iphone', model: /^iphone17$/ },
+  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/ },
+  'iphone-17e': { category: 'iphone', model: /^iphone17e$/ },
+  'iphone-16': { category: 'iphone', model: /^iphone16$/ },
+  'iphone-air': { category: 'iphone', model: /^iphoneair/ },
+  // `watchse` alone would also match `watchseries10`, so the SE needs its digit.
+  'apple-watch': { category: 'watch', model: /^watchseries/ },
+  'apple-watch-se': { category: 'watch', model: /^watchse\d/ },
+  'apple-watch-ultra': { category: 'watch', model: /^watchultra/ },
+  'apple-tv-4k': { category: 'appletv', model: /^appletv/ },
+  homepod: { category: 'homepod', model: /^homepod$/ },
+  'homepod-mini': { category: 'homepod', model: /^homepodmini/ },
 }
+
+/** The grid a family's units would appear in, if Apple refurbishes it at all. */
+export const refurbCategoryFor = (familyId: string): RefurbCategory | null =>
+  REFURB_MODELS[familyId]?.category ?? null
 
 /**
  * Our dimension fields carry the selector section they came from
  * (`storage-dimensionCapacity`); the grid's facets do not. Match on the
- * suffix, and only for facets that mean the same thing on both sides.
+ * suffix — and note that one suffix can mean two different grid keys, since
+ * Apple spells connectivity `dimensionconnectivity` on an iPad and
+ * `dimensionConnection` on a Watch. A listing carries exactly one of them.
  *
  * Colour is deliberately absent. It never moves the new price, and a buyer
  * comparing a second-hand price against a new one is not served by hiding the
  * silver one because they were looking at midnight.
  */
-const FACET_FOR_SUFFIX: Record<string, string> = {
-  dimensionCapacity: 'dimensionCapacity',
-  dimensionScreensize: 'dimensionScreensize',
-  dimensionMemory: 'tsMemorySize',
-  dimensionConnection: 'dimensionconnectivity',
+const FACETS_FOR_SUFFIX: Record<string, string[]> = {
+  dimensionCapacity: ['dimensionCapacity'],
+  dimensionScreensize: ['dimensionScreensize'],
+  dimensionMemory: ['tsMemorySize'],
+  dimensionConnection: ['dimensionconnectivity', 'dimensionConnection'],
+  dimensionCaseSize: ['dimensionCaseSize'],
+  dimensionCaseMaterial: ['dimensionCaseMaterial'],
 }
 
 /**
@@ -59,26 +76,31 @@ const FACET_FOR_SUFFIX: Record<string, string> = {
  * MacBook Air costs more than a new base one, and quoting it as "this
  * configuration, used" would be a straightforwardly false claim.
  */
-const PRICE_DRIVING = [
+const PRICE_DRIVING = new Set([
   'dimensionCapacity',
   'tsMemorySize',
   'dimensionconnectivity',
+  'dimensionConnection',
+  'dimensionCaseSize',
+  'dimensionCaseMaterial',
   // A generation is a spec. Apple refurbishes what it sold a year ago, and an
   // M2 iPad Pro sitting next to an M4 one is not a cheaper version of it.
   'dimensionRelYear',
-]
+])
 
 const FACET_LABELS: Record<string, string> = {
   dimensionCapacity: 'storage',
   dimensionScreensize: 'screen size',
   tsMemorySize: 'memory',
   dimensionconnectivity: 'connectivity',
+  dimensionConnection: 'connectivity',
+  dimensionCaseSize: 'case size',
+  dimensionCaseMaterial: 'case material',
   dimensionColor: 'colour',
   dimensionRelYear: 'release year',
 }
 
-const facetOf = (field: string): string | undefined =>
-  FACET_FOR_SUFFIX[field.slice(field.lastIndexOf('-') + 1)]
+const labelFor = (facet: string): string => FACET_LABELS[facet] ?? facet
 
 /** Chip family and core counts, however each side happens to spell them. */
 interface Processor {
@@ -135,25 +157,37 @@ const processorsAgree = (a: Processor, b: Processor): boolean =>
   (!a.cpu || !b.cpu || a.cpu === b.cpu) &&
   (!a.gpu || !b.gpu || a.gpu === b.gpu)
 
+/** One spec this configuration pins, and the grid keys that could carry it. */
+interface Wanted {
+  keys: string[]
+  value: string
+}
+
+const carriedKey = (wanted: Wanted, listing: RefurbListing): string | undefined =>
+  wanted.keys.find((key) => listing.dimensions[key] !== undefined)
+
 export interface SecondHandMatch {
   /** Matching units, cheapest first. */
   listings: RefurbListing[]
   low: number
   high: number
   currency: string
-  /** The facets this configuration actually pinned, for display. */
+  /** The specs actually checked against the units, for display. */
   matchedOn: string[]
   /**
-   * Facets the matched units differ on. These are the specs this
-   * configuration does not pin, so the range spans them rather than
-   * describing one machine.
+   * Facets the matched units differ on. These are specs this configuration
+   * does not pin, so the range spans them rather than describing one machine.
    */
   varyingOn: string[]
   /**
-   * Whether every price-driving facet these units carry is pinned by this
-   * configuration. False means the units are the same model and chip but not
-   * the same machine, and no honest reading subtracts one price from the
-   * other.
+   * Whether these units are the same machine as the configuration priced
+   * alongside them: at least one price-driving spec positively confirmed on
+   * every unit, and no price-driving spec left unpinned.
+   *
+   * Positive confirmation, not absence of contradiction. A unit that carries
+   * no facets at all -- Apple lists its TV that way -- contradicts nothing,
+   * and an earlier version of this called that "the same configuration" while
+   * comparing a 128GB new box with a 64GB used one.
    */
   exact: boolean
   /** Price-driving facets the units carry and this configuration does not. */
@@ -166,28 +200,27 @@ export interface SecondHandMatch {
  * Matching is by construction never an identity claim: the grid's facets and
  * our configuration dimensions overlap without either containing the other, so
  * this pins every facet both sides name, checks the processor against the
- * listing's own title, and then reports what it matched on and what the
- * matches still vary by. A caller showing the range without showing those two
- * lists would be presenting unlike machines as the same one.
+ * listing's own title, and then reports what it matched on, what the matches
+ * still vary by, and whether the result is the same machine at all.
  */
 export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHandMatch | null {
-  const model = REFURB_MODELS[offer.familyId]
-  if (!model) return null
+  const family = REFURB_MODELS[offer.familyId]
+  if (!family) return null
 
-  const wanted = new Map<string, string>()
+  const wanted: Wanted[] = []
   for (const dimension of offer.dimensions) {
-    const facet = facetOf(dimension.field)
-    if (facet) wanted.set(facet, dimension.value)
+    const keys = FACETS_FOR_SUFFIX[dimension.field.slice(dimension.field.lastIndexOf('-') + 1)]
+    if (keys) wanted.push({ keys, value: dimension.value })
   }
   const processor = processorOf(offer)
 
   const matches = listings.filter((listing) => {
-    if (!model.test(listing.model)) return false
-    for (const [facet, value] of wanted) {
-      const theirs = listing.dimensions[facet]
+    if (!family.model.test(listing.model)) return false
+    for (const spec of wanted) {
       // A facet the grid does not carry for this model cannot disagree; one it
       // does carry must agree exactly.
-      if (theirs !== undefined && theirs !== value) return false
+      const key = carriedKey(spec, listing)
+      if (key !== undefined && listing.dimensions[key] !== spec.value) return false
     }
     return processorsAgree(processor, processorInTitle(listing.title))
   })
@@ -195,38 +228,43 @@ export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHand
   if (matches.length === 0) return null
 
   const sorted = [...matches].sort((a, b) => a.amount - b.amount)
-  const amounts = sorted.map((l) => l.amount)
-
-  const matchedOn = [...wanted.keys()]
-    .filter((facet) => matches.some((l) => l.dimensions[facet] !== undefined))
-    .map((facet) => FACET_LABELS[facet] ?? facet)
-  if (processor.chip || processor.cpu) matchedOn.push('processor')
-
   const facetsCarried = [...new Set(matches.flatMap((l) => Object.keys(l.dimensions)))]
+  const asked = new Set(wanted.flatMap((spec) => spec.keys))
 
-  // Judged per facet the listings carry, not per facet that happens to vary:
-  // a single match varies by nothing while still being a different machine.
+  // Judged per facet the listings carry, not per facet that happens to vary: a
+  // single match varies by nothing while still being a different machine.
   const unpinned = facetsCarried
-    .filter((facet) => PRICE_DRIVING.includes(facet) && !wanted.has(facet))
-    .map((facet) => FACET_LABELS[facet] ?? facet)
+    .filter((facet) => PRICE_DRIVING.has(facet) && !asked.has(facet))
+    .map(labelFor)
 
   const varyingOn = facetsCarried
     .filter(
       (facet) =>
         facet !== 'refurbClearModel' &&
-        !wanted.has(facet) &&
+        !asked.has(facet) &&
         new Set(matches.map((l) => l.dimensions[facet])).size > 1,
     )
-    .map((facet) => FACET_LABELS[facet] ?? facet)
+    .map(labelFor)
+
+  const checked = wanted.filter((spec) => matches.some((l) => carriedKey(spec, l) !== undefined))
+  const confirmed = checked.filter((spec) => spec.keys.some((key) => PRICE_DRIVING.has(key)))
+
+  const matchedOn = checked.map((spec) => labelFor(carriedKey(spec, matches[0]) ?? spec.keys[0]))
+  if (processor.chip || processor.cpu) matchedOn.push('processor')
 
   return {
     listings: sorted,
-    low: amounts[0],
-    high: amounts[amounts.length - 1],
+    low: sorted[0].amount,
+    high: sorted[sorted.length - 1].amount,
     currency: sorted[0].currency,
     matchedOn,
     varyingOn,
-    exact: unpinned.length === 0,
+    // Every unit must carry and agree on each confirmed spec, and there must
+    // be at least one -- otherwise nothing was verified.
+    exact:
+      unpinned.length === 0 &&
+      confirmed.length > 0 &&
+      confirmed.every((spec) => matches.every((l) => carriedKey(spec, l) !== undefined)),
     unpinned,
   }
 }

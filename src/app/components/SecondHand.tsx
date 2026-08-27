@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { convertBetween, formatIn, formatLocal } from '../../shared/convert'
 import type { MarketPrice } from '../../shared/convert'
-import { matchRefurb } from '../../shared/secondhand'
+import { matchRefurb, refurbCategoryFor } from '../../shared/secondhand'
 import type { FxRates, Offer, RefurbListing } from '../../shared/types'
 
 interface Props {
   offer: Offer | undefined
   listings: RefurbListing[]
+  /** Grids that could not be read on the last run. */
+  failedCategories: string[]
+  familyId: string
   readAt: string | null
   rows: MarketPrice[]
   currency: string
@@ -19,6 +22,9 @@ const SPEC_FACETS = [
   'tsMemorySize',
   'dimensionCapacity',
   'dimensionconnectivity',
+  'dimensionCaseSize',
+  'dimensionCaseMaterial',
+  'dimensionConnection',
   'dimensionColor',
 ]
 
@@ -40,7 +46,17 @@ const prettyFacet = (value: string): string =>
  * gone. So the comparison is not a ranking but a gap, and the units are shown
  * individually rather than averaged into a market rate.
  */
-export function SecondHand({ offer, listings, readAt, rows, currency, fx, familyName }: Props) {
+export function SecondHand({
+  offer,
+  listings,
+  failedCategories,
+  familyId,
+  readAt,
+  rows,
+  currency,
+  fx,
+  familyName,
+}: Props) {
   const priced = rows.filter((r) => r.displayAmount !== null && !r.isEducation)
   const [againstId, setAgainstId] = useState<string | null>(null)
 
@@ -52,18 +68,45 @@ export function SecondHand({ offer, listings, readAt, rows, currency, fx, family
   const against = priced.find((r) => r.market.id === againstId) ?? priced[0]
   const inDisplay = (amount: number) => convertBetween(amount, match!.currency, currency, fx)
 
+  const category = refurbCategoryFor(familyId)
+  const gridFailed = category !== null && failedCategories.includes(category)
+
   if (!offer || !match) {
     return (
       <section className="mt-12">
         <Heading readAt={readAt} />
-        <p className="mt-6 text-lg">
-          Apple has no refurbished {familyName} matching this configuration today.
-        </p>
-        <p className="mt-2 max-w-xl text-soft">
-          Its refurbished store carries whatever has been returned and restored, so a
-          configuration appears when a unit does and vanishes when it sells. Machines Apple
-          released recently rarely appear at all.
-        </p>
+        {/* Three different silences, and only one of them is "Apple has none".
+            Reporting the other two as absent stock would be a claim no reading
+            supports. */}
+        {category === null ? (
+          <>
+            <p className="mt-6 text-lg">Second-hand prices are not collected for {familyName}.</p>
+            <p className="mt-2 max-w-xl text-soft">
+              Apple's refurbished store does not carry it, so there is nothing to read.
+            </p>
+          </>
+        ) : gridFailed ? (
+          <>
+            <p className="mt-6 text-lg">
+              Apple's refurbished {category} listings could not be read on the last run.
+            </p>
+            <p className="mt-2 max-w-xl text-soft">
+              Whether it has one of these is unknown rather than settled. The next run is
+              within the day.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-6 text-lg">
+              Apple has no refurbished {familyName} matching this configuration today.
+            </p>
+            <p className="mt-2 max-w-xl text-soft">
+              Its refurbished store carries whatever has been returned and restored, so a
+              configuration appears when a unit does and vanishes when it sells. Machines
+              Apple released recently rarely appear at all.
+            </p>
+          </>
+        )}
       </section>
     )
   }
@@ -150,6 +193,20 @@ export function SecondHand({ offer, listings, readAt, rows, currency, fx, family
               )}
             </figcaption>
           </figure>
+        )}
+
+        {match.matchedOn.length > 0 && (
+          <p className="mt-4 text-xs text-soft">
+            Checked against each unit on {match.matchedOn.join(', ')}
+            {match.varyingOn.length > 0 && <> · these units vary by {match.varyingOn.join(', ')}</>}
+          </p>
+        )}
+
+        {gridFailed && (
+          <p className="mt-4 rounded border border-high/40 bg-high/[0.07] px-3 py-2 text-sm">
+            Apple's refurbished {category} listings could not be read on the last run, so these
+            are carried over from the one before. Some may already have sold.
+          </p>
         )}
 
         <label className="mt-6 flex flex-wrap items-center gap-2 text-sm">

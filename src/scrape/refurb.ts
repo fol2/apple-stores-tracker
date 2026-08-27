@@ -1,6 +1,7 @@
 import { extractJsonAfter } from './apple'
 import { storeOrigin, type Market } from '../shared/markets'
 import type { RefurbListing } from '../shared/types'
+import { REFURB_CATEGORIES, type RefurbCategory } from '../shared/secondhand'
 import { get, type RequestBudget } from './sweep'
 
 /**
@@ -17,9 +18,6 @@ import { get, type RequestBudget } from './sweep'
  * origin we already treat politely, and names the exact part number of every
  * unit it lists.
  */
-export const REFURB_CATEGORIES = ['mac', 'ipad', 'iphone', 'watch', 'appletv', 'homepod'] as const
-export type RefurbCategory = (typeof REFURB_CATEGORIES)[number]
-
 export const refurbUrl = (market: Market, category: RefurbCategory): string =>
   `${storeOrigin}${market.prefix}/shop/refurbished/${category}`
 

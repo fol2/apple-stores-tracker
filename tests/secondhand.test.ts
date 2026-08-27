@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseRefurbGrid } from '../src/scrape/refurb'
-import { matchRefurb, processorInTitle, processorOf } from '../src/shared/secondhand'
+import { matchRefurb, processorInTitle, processorOf, refurbCategoryFor } from '../src/shared/secondhand'
 import type { DimensionValue, Offer } from '../src/shared/types'
 
 const html = readFileSync(new URL('./fixtures/apple-uk-refurb.html', import.meta.url), 'utf8')
@@ -21,7 +21,7 @@ const offer = (familyId: string, dimensions: [string, string][]): Offer => ({
 
 describe('parseRefurbGrid', () => {
   it('reads every unit Apple has, from one page', () => {
-    expect(listings).toHaveLength(9)
+    expect(listings).toHaveLength(14)
     expect(listings[0]).toMatchObject({ partNumber: 'G1MLBB/A', amount: 2669, currency: 'GBP' })
   })
 
@@ -133,6 +133,60 @@ describe('matchRefurb', () => {
 
   it('has nothing to say about a family Apple does not refurbish', () => {
     expect(matchRefurb(offer('airpods-4', []), listings)).toBeNull()
+    expect(refurbCategoryFor('airpods-4')).toBeNull()
+    expect(refurbCategoryFor('macbook-pro')).toBe('mac')
+  })
+
+  /**
+   * Apple lists its TV with no facets at all, so nothing a configuration pins
+   * can disagree with it. Absence of contradiction is not confirmation: the
+   * one unit in stock is a 64GB box, and calling that "the same configuration"
+   * as a new 128GB one would be the exact false claim this guards against.
+   */
+  it('will not call a match exact when the unit carries nothing to check', () => {
+    const tv = offer('apple-tv-4k', [['dimensionConnection', 'wifiethernettv128gb']])
+    const match = matchRefurb(tv, listings)!
+
+    expect(match.listings).toHaveLength(1)
+    expect(match.exact).toBe(false)
+    expect(match.matchedOn).toEqual([])
+  })
+
+  /**
+   * Apple's watch model token is `watchseries11`, not `applewatch`. An earlier
+   * spelling matched nothing, so every watch reported no stock at all — a
+   * confident claim, made from a grid that had forty-one units in it.
+   */
+  it('matches a watch on case size and connection', () => {
+    const watch = (size: string, connection: string) =>
+      matchRefurb(
+        offer('apple-watch', [
+          ['watch_cases-dimensionCaseSize', size],
+          ['watch_cases-dimensionConnection', connection],
+        ]),
+        listings,
+      )
+
+    expect(watch('46mm', 'gps')!.listings.map((l) => l.amount)).toEqual([339])
+    expect(watch('42mm', 'gps')!.listings.map((l) => l.amount)).toEqual([309])
+    // A GPS configuration must never be priced from a cellular unit.
+    expect(watch('46mm', 'gpscell')).toBeNull()
+  })
+
+  /** `watchse` is a prefix of `watchseries`, so the SE needs its digit. */
+  it('keeps the Watch SE and the Watch Series apart', () => {
+    const se = matchRefurb(
+      offer('apple-watch-se', [
+        ['watch_cases-dimensionCaseSize', '44mm'],
+        ['watch_cases-dimensionConnection', 'gps'],
+      ]),
+      listings,
+    )!
+    expect(se.listings.map((l) => l.model)).toEqual(['watchse3'])
+    // Aluminium or titanium changes the price and our configurations do not
+    // say which, so a watch is never quoted as the same machine.
+    expect(se.exact).toBe(false)
+    expect(se.unpinned).toEqual(['case material'])
   })
 
   /** Colour never moves the new price, so it must not hide a cheaper unit. */

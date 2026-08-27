@@ -207,6 +207,8 @@ function Prices() {
         <SecondHand
           offer={comparison.rows.find((r) => r.offer)?.offer}
           listings={data.refurb?.listings ?? []}
+          failedCategories={(data.refurb?.errors ?? []).map((e) => e.category)}
+          familyId={familyId}
           readAt={data.refurb?.collectedAt ?? null}
           rows={comparison.rows}
           currency={currency}

@@ -6,6 +6,7 @@ import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sw
 import { collectRefurb } from '../scrape/refurb'
 import type { Offer, Snapshot } from '../shared/types'
 import {
+  getRefurb,
   putRefurb,
   getPlan,
   getRaw,
@@ -71,13 +72,27 @@ async function stepRefurb(env: Env, now: Date): Promise<string> {
   const budget = new RequestBudget(REQUESTS_PER_TICK)
 
   try {
+    const previous = await getRefurb(env, market.id)
     const collection = await collectRefurb(market, budget)
+
     // A read that returned nothing is a failed read, not an empty shop: keep
     // what we have rather than blanking the tab on one bad afternoon.
     if (collection.listings.length === 0) throw new Error('no listings parsed')
-    await putRefurb(env, market.id, collection)
+
+    // The same applies one grid at a time. A failed Mac page would otherwise
+    // replace every Mac listing with nothing, and the tab would tell readers
+    // Apple has no refurbished MacBooks — which is a claim, not a gap. Carry
+    // the last good listings for that grid, and keep the error so the page can
+    // say the stock is stale rather than absent.
+    const failed = new Set(collection.errors.map((e) => e.category))
+    const carried = (previous?.listings ?? []).filter((l) => failed.has(l.category))
+
+    await putRefurb(env, market.id, {
+      ...collection,
+      listings: [...collection.listings, ...carried],
+    })
     await putSweepState(env, { ...state, refurbAt: now.toISOString() })
-    return `refurb: ${collection.listings.length} listings, ${collection.errors.length} categories failed`
+    return `refurb: ${collection.listings.length} listings, ${failed.size} grids failed, ${carried.length} carried forward`
   } catch (error) {
     await putSweepState(env, { ...state, refurbAt: now.toISOString() })
     return `refurb: failed, keeping previous listings (${error})`
