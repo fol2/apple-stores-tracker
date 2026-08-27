@@ -88,13 +88,21 @@ covers every currency here — the ECB feeds, and anything built on them, have n
 
 ```bash
 npm install
-npx jiti scripts/collect.ts uk us jp   # collect real prices into data/snapshot.json
+npm run ci                             # governance contract, all tests, production build
+npx jiti scripts/collect.ts uk us jp   # authorised live collection into data/snapshot.json
 npm run dev                            # Vite serves that file as /api/snapshot
-npm test                               # parser, refund maths, history diff, MCP
 ```
 
 `scripts/collect.ts` runs the same code as the cron, from a terminal. Omit the market
-arguments to sweep all 15 (about ten minutes, deliberately paced).
+arguments to sweep all 15 (about ten minutes, deliberately paced). Live collection is not
+part of normal tests or CI.
+
+Development follows the repository-owned AI-native SDLC in [`AGENTS.md`](AGENTS.md), with
+the full operating model in [`docs/agents/ai-sdlc.md`](docs/agents/ai-sdlc.md). The default
+is one owner, one branch, one PR, proportionate evidence, exact-head review where model
+judgement matters, and autonomous merge/cleanup when the task and repository permissions
+authorise it. Governance/documentation-only Markdown changes skip dependency installation;
+every other change runs the complete fixture-backed tests and production build.
 
 ## Deploying
 
