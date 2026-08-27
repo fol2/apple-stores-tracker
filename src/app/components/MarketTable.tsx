@@ -65,7 +65,17 @@ export function MarketTable({ rows, homeMarketId, showRefunds }: Props) {
 
                 <td className="tnum py-2.5 pr-3 text-right">
                   {row.offer ? (
-                    formatLocal(row.offer.amount, row.offer.currency)
+                    <>
+                      {formatLocal(row.offer.amount, row.offer.currency)}
+                      {row.market.pricesExcludeTax && (
+                        <span
+                          className="ml-1 text-high"
+                          title="Before sales tax, which is added at checkout and varies by state."
+                        >
+                          +tax
+                        </span>
+                      )}
+                    </>
                   ) : (
                     <span title="Apple does not list this configuration in this market.">
                       not sold

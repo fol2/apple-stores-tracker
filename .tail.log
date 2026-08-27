@@ -1,0 +1,13 @@
+
+ ⛅️ wrangler 4.127.0
+────────────────────
+Successfully created tail, expires at 2026-08-27T18:58:29Z
+Connected to apple-price-tracker, waiting for logs...
+GET https://apple-price-tracker.eugnel.com/api/snapshot - Ok @ 27/08/2026, 13:59:26
+GET https://apple-price-tracker.eugnel.com/api/snapshot - Ok @ 27/08/2026, 14:00:28
+"*/15 * * * *" @ 27/08/2026, 14:00:31 - Ok
+  (log) sweep: discovered 29 families, 0 failed
+GET https://apple-price-tracker.eugnel.com/api/status - Ok @ 27/08/2026, 14:00:58
+GET https://apple-price-tracker.eugnel.com/api/snapshot - Ok @ 27/08/2026, 14:01:39
+
+Stopping tail...

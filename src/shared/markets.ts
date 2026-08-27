@@ -5,6 +5,13 @@ export interface Market {
   flag: string
   /** Path prefix on apple.com; the US store has none. */
   prefix: string
+  /**
+   * The listed price is not what you pay at the till. US stores quote prices
+   * before sales tax, which is added at checkout and varies by state — so a US
+   * row is not directly comparable with a tax-inclusive one, and saying so
+   * matters most precisely when the US comes out cheapest.
+   */
+  pricesExcludeTax?: boolean
 }
 
 /**
@@ -13,7 +20,7 @@ export interface Market {
  */
 export const MARKETS: Market[] = [
   { id: 'uk', name: 'United Kingdom', currency: 'GBP', flag: '🇬🇧', prefix: '/uk' },
-  { id: 'us', name: 'United States', currency: 'USD', flag: '🇺🇸', prefix: '' },
+  { id: 'us', name: 'United States', currency: 'USD', flag: '🇺🇸', prefix: '', pricesExcludeTax: true },
   { id: 'ie', name: 'Ireland', currency: 'EUR', flag: '🇮🇪', prefix: '/ie' },
   { id: 'de', name: 'Germany', currency: 'EUR', flag: '🇩🇪', prefix: '/de' },
   { id: 'fr', name: 'France', currency: 'EUR', flag: '🇫🇷', prefix: '/fr' },

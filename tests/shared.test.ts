@@ -74,7 +74,7 @@ describe('compare', () => {
     const { rows, cheapest } = compare(offers, fx)
     // 199,800 yen is about 922 GBP; 1,299 USD about 955; 1,549 EUR about 1,327.
     expect(cheapest?.market.id).toBe('jp')
-    expect(rows.map((r) => r.market.id)).toEqual(['jp', 'us', 'uk', 'de'])
+    expect(rows.filter((r) => r.offer).map((r) => r.market.id)).toEqual(['jp', 'us', 'uk', 'de'])
   })
 
   it('reports the spread between dearest and cheapest', () => {
@@ -92,11 +92,20 @@ describe('compare', () => {
     expect(compare(offers, fx, { applyRefunds: true }).rows[0].market.id).toBe('jp')
   })
 
-  it('keeps markets with no rate visible, but ranked last', () => {
+  it('lists every market, so a gap reads as a gap and not as absence', () => {
+    const { rows } = compare(offers, fx)
+    expect(rows).toHaveLength(MARKETS.length)
+    const notSold = rows.find((r) => r.market.id === 'sg')!
+    expect(notSold.offer).toBeUndefined()
+    expect(notSold.baseAmount).toBeNull()
+  })
+
+  it('ranks markets with no rate last, but still shows them', () => {
     const { rows, covered } = compare([...offers, offer('th', 'THB', 46_900)], fx)
     expect(covered).toBe(4)
-    expect(rows.at(-1)!.market.id).toBe('th')
-    expect(rows.at(-1)!.baseAmount).toBeNull()
+    const thailand = rows.find((r) => r.market.id === 'th')!
+    expect(thailand.offer).toBeDefined()
+    expect(thailand.baseAmount).toBeNull()
   })
 })
 

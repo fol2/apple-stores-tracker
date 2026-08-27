@@ -154,6 +154,17 @@ function Prices() {
                   : 'The United Kingdom is already the cheapest market for this build.'}
             </p>
 
+            {cheapest.market.pricesExcludeTax && (
+              <p className="mt-3 rounded border border-high/40 bg-high/[0.07] px-3 py-2 text-sm">
+                {cheapest.market.name} prices exclude sales tax, which is added at checkout and
+                varies by state. Expect roughly{' '}
+                <span className="tnum font-semibold">
+                  {formatBase(cheapest.baseAmount * 0.08)}
+                </span>{' '}
+                more at around 8%.
+              </p>
+            )}
+
             <SpreadAxis rows={comparison.rows} homeMarketId={HOME_MARKET} />
           </>
         ) : (

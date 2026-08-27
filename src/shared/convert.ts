@@ -1,5 +1,5 @@
 import type { FxRates, Offer } from './types'
-import { BASE_CURRENCY, marketById, type Market } from './markets'
+import { BASE_CURRENCY, MARKETS, type Market } from './markets'
 import { afterRefund, refundPolicy, type RefundPolicy } from './refunds'
 
 export interface MarketPrice {
@@ -44,27 +44,19 @@ export function compare(
 ): Comparison {
   const byMarket = new Map(offers.map((o) => [o.marketId, o]))
 
-  const rows: MarketPrice[] = [...byMarket.keys(), ...offers.map((o) => o.marketId)]
-    .filter((id, i, all) => all.indexOf(id) === i)
-    .flatMap((id) => {
-      const market = marketById(id)
-      if (!market) return []
-      const offer = byMarket.get(id)
-      const policy = refundPolicy(id)
-      const localAmount =
-        offer && options.applyRefunds ? afterRefund(offer.amount, policy) : offer?.amount
-      return [
-        {
-          market,
-          offer,
-          policy,
-          localAmount,
-          baseAmount:
-            localAmount === undefined ? null : toBase(localAmount, offer!.currency, fx),
-        },
-      ]
-    })
-    .sort((a, b) => (a.baseAmount ?? Infinity) - (b.baseAmount ?? Infinity))
+  const rows: MarketPrice[] = MARKETS.map((market) => {
+    const offer = byMarket.get(market.id)
+    const policy = refundPolicy(market.id)
+    const localAmount =
+      offer && options.applyRefunds ? afterRefund(offer.amount, policy) : offer?.amount
+    return {
+      market,
+      offer,
+      policy,
+      localAmount,
+      baseAmount: localAmount === undefined ? null : toBase(localAmount, offer!.currency, fx),
+    }
+  }).sort((a, b) => (a.baseAmount ?? Infinity) - (b.baseAmount ?? Infinity))
 
   const priced = rows.map((r) => r.baseAmount).filter((v): v is number => v !== null)
 

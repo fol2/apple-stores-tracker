@@ -55,7 +55,7 @@ export function Agents() {
         <h2 className="eyebrow">Tools</h2>
         <dl className="mt-3 divide-y divide-rule border-y border-rule">
           {TOOLS.map((tool) => (
-            <div key={tool.name} className="grid gap-1 py-3 sm:grid-cols-[16rem_1fr] sm:gap-4">
+            <div key={tool.name} className="grid gap-1 py-3 sm:grid-cols-[minmax(0,21rem)_1fr] sm:gap-4">
               <dt className="font-mono text-sm">{tool.name}</dt>
               <dd className="text-sm text-soft">{tool.what}</dd>
             </div>
