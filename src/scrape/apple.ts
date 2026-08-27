@@ -1,0 +1,402 @@
+import type { DimensionValue, FamilyStructure, Offer } from '../shared/types'
+import { storeUrl, type Market } from '../shared/markets'
+import { FAMILIES, type Family } from '../shared/families'
+
+/**
+ * Apple's store pages embed a JS object literal:
+ *
+ *   window.PRODUCT_SELECTION_BOOTSTRAP = { productSelectionData: { …JSON… } }
+ *
+ * The outer literal has unquoted keys so it is not JSON, but the value of
+ * `productSelectionData` is. Brace-match from the key to pull it out.
+ */
+export function extractJsonAfter(html: string, anchor: string): unknown {
+  const at = html.indexOf(anchor)
+  if (at < 0) throw new Error(`anchor not found: ${anchor}`)
+  const start = html.indexOf('{', at)
+  if (start < 0) throw new Error(`no object after: ${anchor}`)
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < html.length; i++) {
+    const c = html[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (c === '\\') escaped = true
+      else if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') inString = true
+    else if (c === '{') depth++
+    else if (c === '}' && --depth === 0) return JSON.parse(html.slice(start, i + 1))
+  }
+  throw new Error(`unterminated object after: ${anchor}`)
+}
+
+/**
+ * Apple wraps option labels in markup: a headline, then a `form-label-small`
+ * block of marketing copy and footnote markers. Only the headline is a name.
+ */
+function cleanLabel(header: string | undefined, fallback: string): string {
+  if (!header) return fallback
+  const text = header
+    .replace(/<(div|span)[^>]*class="[^"]*(form-label-small|as-subheading)[^"]*"[\s\S]*$/, '')
+    .replace(/<as-footnote[\s\S]*?<\/as-footnote>/g, '')
+    // Superscripts in an option label are always footnote markers, and
+    // `visuallyhidden` text is for screen readers reading those markers.
+    .replace(/<sup[\s\S]*?<\/sup>/g, '')
+    .replace(/<span[^>]*class="[^"]*visuallyhidden[^"]*"[\s\S]*?<\/span>/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text || fallback
+}
+
+/**
+ * Bundled software (Logic Pro, Final Cut Pro) is priced like a hardware option
+ * but is not one: including it quadruples every Mac's matrix while comparing
+ * app licences rather than machines.
+ */
+const EXCLUDED_DIMENSIONS = /preInstalledSoftware/
+
+interface CtoSelectionData {
+  products: { btrOrFdPartNumber: string | null; priceKey: string; dimensions: Record<string, string> }[]
+  mainSections: { formFieldName: string; header?: string; selectorLabel?: string }[]
+  configSections: { formFieldName: string; header?: string; selectorLabel?: string; priceDelta?: boolean }[]
+  mainDisplayValues: Record<string, any>
+  configDisplayValues: Record<string, any>
+}
+
+interface CatalogSelectionData {
+  /** One entry per stocked SKU, with its dimension values as direct fields. */
+  products: Record<string, any>[]
+  sections: { formFieldName: string; header?: string; selectorLabel?: string }[]
+  displayValues: Record<string, any>
+}
+
+const isCto = (data: any): data is CtoSelectionData => Array.isArray(data?.configSections)
+
+/**
+ * Read a family's selector structure from its select-step page. Structure is
+ * market-independent — only prices differ — so this runs against one market
+ * and the result is reused for all of them.
+ */
+export function parseFamilyStructure(html: string, family: Family): FamilyStructure {
+  const data = extractJsonAfter(html, 'productSelectionData:')
+  return isCto(data)
+    ? parseCtoStructure(html, family, data)
+    : parseCatalogStructure(family, data as CatalogSelectionData)
+}
+
+/**
+ * Name one chip/model variant.
+ *
+ * The base variant of a family carries no `header` of its own — Apple prints
+ * its specification in the parent chip's `dynamicFooter` instead, since the
+ * chip tile already names it. Fall through to that before giving up and
+ * showing a raw id like `m6-12-12`.
+ */
+function variantLabel(mainDisplayValues: Record<string, any>, field: string, value: string): string {
+  const entry = mainDisplayValues[field]?.[value]
+  if (entry?.header) return cleanLabel(entry.header, value)
+
+  // Siblings are named "15-core CPU, 16-core GPU"; build the same shape for
+  // the base variant so one family's options read consistently.
+  const parts = entry?.dimensionComponents
+  if (parts?.cpuCoreCount && parts?.gpuCoreCount) {
+    return `${parts.cpuCoreCount}-core CPU, ${parts.gpuCoreCount}-core GPU`
+  }
+
+  for (const group of Object.values(mainDisplayValues) as any[]) {
+    for (const entry of Object.values(group ?? {}) as any[]) {
+      const footer = entry?.dynamicFooter?.[value]
+      if (typeof footer === 'string' && footer.trim()) return cleanLabel(footer, value)
+    }
+  }
+  return value
+}
+
+function parseCtoStructure(html: string, family: Family, data: CtoSelectionData): FamilyStructure {
+  const collection = html.match(/update-config\?collection=([A-Z0-9_]+)/)?.[1]
+  if (!collection) throw new Error(`no CTO collection id on ${family.id} page`)
+
+  // Each entry in `products` is one chip/model variant, and each needs its own
+  // pricing request because Apple quotes option deltas relative to a variant.
+  const variants: DimensionValue[][] = data.products.map((product) =>
+    Object.entries(product.dimensions).map(([field, value]) => ({
+      field,
+      value,
+      label: variantLabel(data.mainDisplayValues, field, value),
+    })),
+  )
+
+  const dimensions = data.configSections
+    .filter((section) => section.priceDelta && !EXCLUDED_DIMENSIONS.test(section.formFieldName))
+    .flatMap((section) => {
+      const values = data.configDisplayValues[section.formFieldName]
+      if (!values) return []
+      const order: string[] = values.variantOrder ?? Object.keys(values).filter((k) => k !== 'variantOrder')
+      return [
+        {
+          field: section.formFieldName,
+          label: cleanLabel(section.selectorLabel ?? section.header, section.formFieldName),
+          values: order.map((value) => ({
+            field: section.formFieldName,
+            value,
+            label: cleanLabel(values[value]?.header, value),
+          })),
+        },
+      ]
+    })
+
+  return { familyId: family.id, kind: 'cto', collection, variants, dimensions }
+}
+
+/** Apple states the amount under a different key in each selector variant. */
+function priceAmount(entry: any): number | undefined {
+  for (const value of [entry?.amount, entry?.amountBeforeTradeIn, entry?.seoPrice]) {
+    if (typeof value === 'number') return value
+  }
+  const raw = Number(entry?.currentPrice?.raw_amount)
+  return Number.isFinite(raw) ? raw : undefined
+}
+
+const partOf = (product: Record<string, any>): string | undefined =>
+  typeof product.partNumber === 'string' ? product.partNumber : undefined
+
+/**
+ * Resolve a SKU's price.
+ *
+ * Catalogue pages come in several shapes: a product may name its price entry
+ * directly (`price`, `priceKey`, `fullPrice`), or the entry may claim a set of
+ * parts through `validProducts` — Apple groups the colours of one build under
+ * a single price that way.
+ */
+function catalogPriceResolver(
+  data: CatalogSelectionData,
+): (product: Record<string, any>) => number | undefined {
+  const prices: Record<string, any> = data.displayValues?.prices ?? {}
+
+  const byPart = new Map<string, number>()
+  for (const entry of Object.values(prices)) {
+    const amount = priceAmount(entry)
+    if (amount === undefined) continue
+    for (const part of entry?.validProducts ?? []) byPart.set(part, amount)
+    if (typeof entry?.product === 'string' && !byPart.has(entry.product)) {
+      byPart.set(entry.product, amount)
+    }
+  }
+
+  return (product) => {
+    const key = product.fullPrice ?? product.price ?? product.priceKey
+    const direct = typeof key === 'string' ? priceAmount(prices[key]) : undefined
+    if (direct !== undefined) return direct
+    const part = partOf(product)
+    return part ? byPart.get(part) : undefined
+  }
+}
+
+/** Dimension values sit either in a nested object or directly on the product. */
+const dimensionSource = (product: Record<string, any>): Record<string, any> =>
+  product.dimensions && typeof product.dimensions === 'object' ? product.dimensions : product
+
+/**
+ * Drop dimensions that never move the price.
+ *
+ * Colour is the usual case — 21 iPhone SKUs are 7 hardware configurations in
+ * three finishes — but the rule is written generally rather than as a colour
+ * special case, because Apple has previously charged for finishes and may
+ * again. Two SKUs differing in exactly one dimension at different prices make
+ * that dimension price-relevant.
+ */
+function priceRelevantFields(
+  fields: string[],
+  products: Record<string, any>[],
+  priceOf: (product: Record<string, any>) => number | undefined,
+): string[] {
+  return fields.filter((field) => {
+    const groups = new Map<string, Set<number>>()
+    for (const product of products) {
+      const price = priceOf(product)
+      if (price === undefined) continue
+      const source = dimensionSource(product)
+      const key = fields.filter((f) => f !== field).map((f) => source[f]).join('|')
+      const seen = groups.get(key) ?? new Set<number>()
+      seen.add(price)
+      groups.set(key, seen)
+    }
+    return [...groups.values()].some((seen) => seen.size > 1)
+  })
+}
+
+function parseCatalogStructure(family: Family, data: CatalogSelectionData): FamilyStructure {
+  const fields = data.sections.map((s) => s.formFieldName)
+  const relevant = priceRelevantFields(fields, data.products, catalogPriceResolver(data))
+
+  const dimensions = data.sections
+    .filter((section) => relevant.includes(section.formFieldName))
+    .map((section) => {
+      const values = data.displayValues[section.formFieldName] ?? {}
+      const order = data.products
+        .map((p) => dimensionSource(p)[section.formFieldName])
+        .filter((v, i, all): v is string => typeof v === 'string' && all.indexOf(v) === i)
+      return {
+        field: section.formFieldName,
+        label: cleanLabel(section.selectorLabel ?? section.header, section.formFieldName),
+        values: order.map((value) => ({
+          field: section.formFieldName,
+          value,
+          label: cleanLabel(values[value]?.value ?? values[value]?.header, value),
+        })),
+      }
+    })
+
+  return { familyId: family.id, kind: 'catalog', variants: [], dimensions }
+}
+
+/**
+ * Price a catalogue family from its own select page. Unlike the CTO flow this
+ * needs the page for the market being priced, because the prices live in it.
+ */
+export function parseCatalogOffers(html: string, market: Market, family: Family): Offer[] {
+  const data = extractJsonAfter(html, 'productSelectionData:') as CatalogSelectionData
+  if (isCto(data)) throw new Error(`${family.id} is a build-to-order family`)
+
+  const structure = parseCatalogStructure(family, data)
+  const priceOf = catalogPriceResolver(data)
+  const fields = structure.dimensions.map((d) => d.field)
+  const labelOf = (field: string, value: string) =>
+    structure.dimensions.find((d) => d.field === field)?.values.find((v) => v.value === value)?.label ?? value
+
+  const sourceUrl = storeUrl(market, family.route)
+  const byConfig = new Map<string, Offer>()
+
+  for (const product of data.products) {
+    const amount = priceOf(product)
+    if (amount === undefined) continue
+
+    const source = dimensionSource(product)
+    const dimensions: DimensionValue[] = fields
+      .filter((field) => typeof source[field] === 'string')
+      .map((field) => ({ field, value: source[field], label: labelOf(field, source[field]) }))
+    const configKey = configKeyOf(dimensions)
+
+    // Several colours share one hardware configuration; keep the first, since
+    // they are the same machine at the same price.
+    if (byConfig.has(configKey)) continue
+    byConfig.set(configKey, {
+      marketId: market.id,
+      familyId: family.id,
+      configKey,
+      dimensions,
+      amount,
+      currency: market.currency,
+      partNumber: partOf(product) ?? null,
+      sourceUrl,
+    })
+  }
+
+  return [...byConfig.values()]
+}
+
+/** Apple's CTO pricing endpoint. Public, cacheable, no session required. */
+export function ctoUrl(market: Market, collection: string, selection: DimensionValue[]): string {
+  const params = new URLSearchParams({ collection, fae: 'true' })
+  for (const { field, value } of selection) params.set(`sv.${field}`, value)
+  return storeUrl(market, `/shop/api/cto/update-config?${params}`)
+}
+
+interface CtoResponse {
+  body?: {
+    options?: Record<string, { compatibleOptions?: Record<string, { priceDelta?: string | null; isBlocked?: boolean }> }>
+    prices?: Record<string, { amount: number }>
+    selectedKits?: { btrOrFdPartNumber?: string | null; priceData?: { amount?: number } }
+  }
+}
+
+/** A priced variant: the base configuration plus every option's delta from it. */
+export interface VariantPricing {
+  base: number
+  partNumber: string | null
+  /** `deltas[field][value]` = amount to add to `base`. Blocked options are absent. */
+  deltas: Record<string, Record<string, number>>
+}
+
+export function parseVariantPricing(response: CtoResponse): VariantPricing {
+  const body = response.body
+  const base = body?.selectedKits?.priceData?.amount
+  if (typeof base !== 'number') throw new Error('no price in CTO response')
+
+  const prices = body?.prices ?? {}
+  const deltas: Record<string, Record<string, number>> = {}
+  for (const [field, option] of Object.entries(body?.options ?? {})) {
+    const byValue: Record<string, number> = {}
+    for (const [value, info] of Object.entries(option.compatibleOptions ?? {})) {
+      if (info.isBlocked) continue
+      // `priceDelta` is a key into `prices`; a null delta means "no charge".
+      const amount = info.priceDelta ? prices[info.priceDelta]?.amount : 0
+      if (typeof amount === 'number') byValue[value] = amount
+    }
+    if (Object.keys(byValue).length) deltas[field] = byValue
+  }
+
+  return { base, partNumber: body?.selectedKits?.btrOrFdPartNumber ?? null, deltas }
+}
+
+/** Stable, market-independent id for a dimension combination. */
+export const configKeyOf = (dimensions: DimensionValue[]): string =>
+  dimensions
+    .map((d) => `${d.field}=${d.value}`)
+    .sort()
+    .join('|')
+
+/**
+ * Expand one priced variant into every configuration it can reach.
+ *
+ * Apple quotes each option's delta relative to the currently selected build,
+ * and those deltas are additive: with 16GB selected, 24GB reads +200; select
+ * 24GB and the base rises by exactly 200 while the storage deltas stay put.
+ * So `price(config) = base + Σ delta`, and one request covers the whole matrix.
+ */
+export function expandVariant(
+  market: Market,
+  family: Family,
+  structure: FamilyStructure,
+  variant: DimensionValue[],
+  pricing: VariantPricing,
+): Offer[] {
+  const priced = structure.dimensions
+    .map((dimension) => {
+      const available = pricing.deltas[dimension.field]
+      if (!available) return []
+      return dimension.values.filter((v) => v.value in available)
+    })
+    .filter((values) => values.length > 0)
+
+  let combinations: DimensionValue[][] = [[]]
+  for (const values of priced) {
+    combinations = combinations.flatMap((combo) => values.map((value) => [...combo, value]))
+  }
+
+  const sourceUrl = storeUrl(market, family.route)
+  return combinations.map((combo) => {
+    const amount = combo.reduce((sum, v) => sum + pricing.deltas[v.field][v.value], pricing.base)
+    const dimensions = [...variant, ...combo]
+    return {
+      marketId: market.id,
+      familyId: family.id,
+      configKey: configKeyOf(dimensions),
+      dimensions,
+      amount,
+      currency: market.currency,
+      // Only the untouched base build has a stocked part number.
+      partNumber: combo.every((v) => pricing.deltas[v.field][v.value] === 0) ? pricing.partNumber : null,
+      sourceUrl,
+    }
+  })
+}
+
+export const familyById = (id: string): Family | undefined => FAMILIES.find((f) => f.id === id)

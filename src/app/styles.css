@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+/*
+ * Parity reads as an exchange bureau's rate board: banknote greens and
+ * intaglio reds on a cool paper, with the money set in a wide monospace so a
+ * column of prices scans as a column of prices.
+ */
+@theme {
+  --color-paper: #edefe9;
+  --color-raised: #f8f9f5;
+  --color-ink: #16211c;
+  --color-soft: #5b6a62;
+  --color-rule: #d3d8ce;
+  --color-low: #1c6b44;
+  --color-high: #9c3b2e;
+  --color-home: #2b4c8c;
+
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Martian Mono', ui-monospace, monospace;
+}
+
+@layer theme {
+  :root:not([data-theme='light']) {
+    @media (prefers-color-scheme: dark) {
+      --color-paper: #0e1512;
+      --color-raised: #16201b;
+      --color-ink: #e6ebe4;
+      --color-soft: #93a399;
+      --color-rule: #263029;
+      --color-low: #4fc287;
+      --color-high: #e28073;
+      --color-home: #7fa5e8;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --color-paper: #0e1512;
+    --color-raised: #16201b;
+    --color-ink: #e6ebe4;
+    --color-soft: #93a399;
+    --color-rule: #263029;
+    --color-low: #4fc287;
+    --color-high: #e28073;
+    --color-home: #7fa5e8;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Prices are compared down a column, so every digit gets the same width. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-soft);
+}
+
+/* A hairline that survives fractional device pixels. */
+.rule {
+  border-color: var(--color-rule);
+}
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-home);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Rows and markers settle into place when the configuration changes. */
+.settle {
+  transition:
+    left 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settle {
+    transition: none;
+  }
+}

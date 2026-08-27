@@ -1,0 +1,63 @@
+/** A single selectable hardware option, e.g. memory 24GB. */
+export interface DimensionValue {
+  /** Apple's dimension id, e.g. `memory-dimensionMemory`. */
+  field: string
+  /** Apple's value id, e.g. `24gb`. */
+  value: string
+  /** Human label, e.g. `24GB`. */
+  label: string
+}
+
+/** One exact configuration priced in one market. */
+export interface Offer {
+  marketId: string
+  familyId: string
+  /** Stable id for the dimension combination, identical across markets. */
+  configKey: string
+  dimensions: DimensionValue[]
+  /** List price in the market's own currency. */
+  amount: number
+  currency: string
+  /** Apple part number, when the configuration is a stocked build. */
+  partNumber: string | null
+  /** The regional Apple Store page this configuration came from. */
+  sourceUrl: string
+}
+
+/**
+ * What one family's product selector looks like — market-independent.
+ *
+ * Apple ships two kinds of selector, and they need different handling:
+ *
+ * - `cto` (every Mac): a build-to-order matrix. The page lists chip variants;
+ *   prices come from the CTO endpoint, one request per variant.
+ * - `catalog` (iPhone, iPad, Watch, AirPods, displays, TV & Home): a fixed set
+ *   of SKUs. Every price is already on the page, so no extra request is needed
+ *   — but the page must be fetched once per market, since it carries the money.
+ */
+export interface FamilyStructure {
+  familyId: string
+  kind: 'cto' | 'catalog'
+  /** Apple's CTO collection id, e.g. `MAC_MINI_2026_COLLECTION`. `cto` only. */
+  collection?: string
+  /** Chip/model variants; each needs its own pricing request. `cto` only. */
+  variants: DimensionValue[][]
+  /** Configurable dimensions in display order. */
+  dimensions: { field: string; label: string; values: DimensionValue[] }[]
+}
+
+export interface Snapshot {
+  collectedAt: string
+  markets: string[]
+  offers: Offer[]
+  /** Families that failed to collect, with the reason. */
+  errors: { marketId: string; familyId: string; message: string }[]
+}
+
+/** Base-currency conversion rates, keyed by the market's currency. */
+export interface FxRates {
+  base: string
+  fetchedAt: string
+  /** `rates[CUR]` = how many CUR one unit of `base` buys. */
+  rates: Record<string, number>
+}

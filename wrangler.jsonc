@@ -1,0 +1,34 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "apple-price-tracker",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+
+  "routes": [{ "pattern": "apple-price-tracker.eugnel.com", "custom_domain": true }],
+
+  "assets": {
+    "directory": "./dist/public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/mcp", "/llms.txt"]
+  },
+
+  // One step per tick: a step is at most ~60 subrequests, and a market that
+  // fails is a cheap retry rather than a lost sweep. A full pass is 17 steps,
+  // and the worker idles between passes -- see SWEEP_INTERVAL_MS.
+  "triggers": { "crons": ["*/15 * * * *"] },
+
+  "kv_namespaces": [{ "binding": "PRICES", "id": "47e39bc1784b4a7d8942a7d9fb61c235" }],
+
+  "d1_databases": [
+    {
+      "binding": "HISTORY",
+      "database_name": "price-history",
+      "database_id": "64d8055c-e578-4360-869f-8703c783bb4a",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

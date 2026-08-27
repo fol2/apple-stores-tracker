@@ -1,0 +1,20 @@
+{
+  // Tests run under Node, so they get Node's types. The worker sources get
+  // Cloudflare's in tsconfig.node.json -- the two type sets disagree about
+  // globals such as fetch and URL, so they must not be mixed in one program.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    // Vite loads vite.config.ts natively, which requires real .ts specifiers.
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "include": ["tests", "vite.config.ts", "vitest.config.ts"]
+}
