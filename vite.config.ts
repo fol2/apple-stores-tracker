@@ -29,6 +29,7 @@ function localSnapshot(): Plugin {
               families: FAMILIES,
               refunds: REFUND_POLICIES,
               fx: local.fx,
+              refurb: local.refurb ?? null,
               offers: local.offers,
               errors: local.errors,
             }),

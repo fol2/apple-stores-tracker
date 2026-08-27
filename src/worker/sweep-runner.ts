@@ -1,10 +1,13 @@
-import { MARKETS, STORES } from '../shared/markets'
+import { MARKETS, marketById, REFURB_MARKET, STORES } from '../shared/markets'
 import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
 import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
+import { collectRefurb } from '../scrape/refurb'
 import type { Offer, Snapshot } from '../shared/types'
 import {
+  getRefurb,
+  putRefurb,
   getPlan,
   getRaw,
   getPendingHistory,
@@ -40,6 +43,8 @@ export async function runNextStep(env: Env, now = new Date()): Promise<string> {
       return runStep(env, state.step, now)
     case 'start-sweep':
       return startSweep(env, now, 'scheduled: catalogue is due a full read')
+    case 'refresh-refurb':
+      return stepRefurb(env, now)
     case 'probe':
       return stepProbe(env, now)
     default:
@@ -51,6 +56,47 @@ async function startSweep(env: Env, now: Date, reason: string): Promise<string> 
   const state = await getSweepState(env)
   await putSweepState(env, { ...state, step: 0, startedAt: now.toISOString(), reason })
   return `${reason} -> ${await runStep(env, 0, now)}`
+}
+
+/**
+ * Read the second-hand market: Apple's own refurbished store, in one market.
+ *
+ * Six requests for the whole catalogue, which is why this fits in a single
+ * tick where a price sweep needs ninety. Only the UK is collected -- a
+ * refurbished unit has to be bought where it sits, so a Tokyo listing is not
+ * an option a UK reader has.
+ */
+async function stepRefurb(env: Env, now: Date): Promise<string> {
+  const state = await getSweepState(env)
+  const market = marketById(REFURB_MARKET)!
+  const budget = new RequestBudget(REQUESTS_PER_TICK)
+
+  try {
+    const previous = await getRefurb(env, market.id)
+    const collection = await collectRefurb(market, budget)
+
+    // A read that returned nothing is a failed read, not an empty shop: keep
+    // what we have rather than blanking the tab on one bad afternoon.
+    if (collection.listings.length === 0) throw new Error('no listings parsed')
+
+    // The same applies one grid at a time. A failed Mac page would otherwise
+    // replace every Mac listing with nothing, and the tab would tell readers
+    // Apple has no refurbished MacBooks — which is a claim, not a gap. Carry
+    // the last good listings for that grid, and keep the error so the page can
+    // say the stock is stale rather than absent.
+    const failed = new Set(collection.errors.map((e) => e.category))
+    const carried = (previous?.listings ?? []).filter((l) => failed.has(l.category))
+
+    await putRefurb(env, market.id, {
+      ...collection,
+      listings: [...collection.listings, ...carried],
+    })
+    await putSweepState(env, { ...state, refurbAt: now.toISOString() })
+    return `refurb: ${collection.listings.length} listings, ${failed.size} grids failed, ${carried.length} carried forward`
+  } catch (error) {
+    await putSweepState(env, { ...state, refurbAt: now.toISOString() })
+    return `refurb: failed, keeping previous listings (${error})`
+  }
 }
 
 /**

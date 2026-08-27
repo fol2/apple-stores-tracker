@@ -1,4 +1,5 @@
 import type { FamilyStructures, MarketCollection } from '../scrape/sweep'
+import type { RefurbCollection } from '../scrape/refurb'
 import type { SweepStep } from '../shared/plan'
 import type { PricePoint } from '../shared/diff'
 import type { FxRates, Snapshot } from '../shared/types'
@@ -19,6 +20,8 @@ export const KEYS = {
   /** `key` is `<market>:<store>`, so retail and education stay separate. */
   raw: (key: string) => `raw:${key}`,
   snapshot: 'snapshot:latest',
+  /** Second-hand listings, per market. Only the UK is collected today. */
+  refurb: (marketId: string) => `refurb:${marketId}`,
   fx: 'fx:latest',
   sweep: 'sweep:state',
   pendingHistory: 'history:pending',
@@ -49,6 +52,11 @@ export const putPlan = (env: Env, v: SweepStep[]) => writeJson(env.PRICES, KEYS.
 export const getSnapshot = (env: Env) => readJson<Snapshot>(env.PRICES, KEYS.snapshot)
 export const putSnapshot = (env: Env, v: Snapshot) => writeJson(env.PRICES, KEYS.snapshot, v)
 
+export const getRefurb = (env: Env, marketId: string) =>
+  readJson<RefurbCollection>(env.PRICES, KEYS.refurb(marketId))
+export const putRefurb = (env: Env, marketId: string, v: RefurbCollection) =>
+  writeJson(env.PRICES, KEYS.refurb(marketId), v)
+
 export const getFx = (env: Env) => readJson<FxRates>(env.PRICES, KEYS.fx)
 export const putFx = (env: Env, v: FxRates) => writeJson(env.PRICES, KEYS.fx, v)
 
@@ -69,6 +77,8 @@ export interface SweepState {
   /** Last change-detection probe, and where in the rotation it had reached. */
   probeAt: string | null
   probeCursor: number
+  /** Last read of the refurbished store. */
+  refurbAt: string | null
 }
 
 const NO_SWEEP: SweepState = {
@@ -78,6 +88,7 @@ const NO_SWEEP: SweepState = {
   reason: null,
   probeAt: null,
   probeCursor: 0,
+  refurbAt: null,
 }
 
 export const getSweepState = async (env: Env): Promise<SweepState> => ({

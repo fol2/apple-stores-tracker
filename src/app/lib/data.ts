@@ -1,7 +1,13 @@
 import type { Category, Family } from '../../shared/families'
 import type { Market } from '../../shared/markets'
 import type { RefundPolicy } from '../../shared/refunds'
-import type { DimensionValue, FxRates, Offer } from '../../shared/types'
+import type {
+  DimensionValue,
+  FxRates,
+  Offer,
+  RefurbCategory,
+  RefurbListing,
+} from '../../shared/types'
 
 export interface SnapshotResponse {
   collectedAt: string
@@ -11,6 +17,13 @@ export interface SnapshotResponse {
   families: Family[]
   refunds: Record<string, RefundPolicy>
   fx: FxRates | null
+  /** Second-hand listings for the one market they are collected in. */
+  refurb: {
+    marketId: string
+    collectedAt: string
+    listings: RefurbListing[]
+    errors: { category: RefurbCategory; message: string }[]
+  } | null
   offers: Offer[]
   errors: { marketId: string; familyId: string; message: string }[]
 }
