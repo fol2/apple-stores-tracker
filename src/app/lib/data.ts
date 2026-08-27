@@ -20,7 +20,16 @@ export async function loadSnapshot(): Promise<SnapshotResponse> {
   if (!response.ok) throw new Error(`Prices are unavailable (${response.status}).`)
   const body = await response.json()
   if (body.error) throw new Error(body.error)
-  return body as SnapshotResponse
+
+  const data = body as SnapshotResponse
+  return {
+    ...data,
+    // A snapshot collected before education prices existed has no `store`.
+    // Defaulting it here, at the one boundary where stored data enters the
+    // app, keeps a stale snapshot rendering instead of filtering every offer
+    // out and leaving the page stuck on "Loading".
+    offers: data.offers.map((offer) => ({ ...offer, store: offer.store ?? 'retail' })),
+  }
 }
 
 export interface Dimension {
@@ -41,7 +50,7 @@ export function dimensionsOf(offers: Offer[], familyId: string): Dimension[] {
   const byField = new Map<string, Map<string, string>>()
 
   for (const offer of offers) {
-    if (offer.familyId !== familyId) continue
+    if (offer.familyId !== familyId || offer.store === 'education') continue
     for (const { field, value, label } of offer.dimensions) {
       if (!byField.has(field)) {
         byField.set(field, new Map())
@@ -56,7 +65,7 @@ export function dimensionsOf(offers: Offer[], familyId: string): Dimension[] {
   // a buyer reads anyway: 256GB before 512GB, 16GB before 64GB.
   const floor = new Map<string, number>()
   for (const offer of offers) {
-    if (offer.familyId !== familyId) continue
+    if (offer.familyId !== familyId || offer.store === 'education') continue
     for (const { field, value } of offer.dimensions) {
       const key = `${field}=${value}`
       floor.set(key, Math.min(floor.get(key) ?? Infinity, offer.amount))
@@ -113,7 +122,9 @@ export function resolveSelection(
   priority: string[],
   homeMarketId: string,
 ): { configKey: string; dimensions: DimensionValue[] } | null {
-  const candidates = offers.filter((o) => o.familyId === familyId)
+  // Resolve against retail: education is a second price for the same build,
+  // and offering education-only configurations would be a different catalogue.
+  const candidates = offers.filter((o) => o.familyId === familyId && o.store !== 'education')
   if (candidates.length === 0) return null
 
   // Before anything is chosen, open on the entry-level build, the way Apple's

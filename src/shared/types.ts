@@ -8,10 +8,12 @@ export interface DimensionValue {
   label: string
 }
 
-/** One exact configuration priced in one market. */
+/** One exact configuration priced in one market, at one of Apple's stores. */
 export interface Offer {
   marketId: string
   familyId: string
+  /** Which Apple store quoted it — education prices are lower but restricted. */
+  store: 'retail' | 'education'
   /** Stable id for the dimension combination, identical across markets. */
   configKey: string
   dimensions: DimensionValue[]

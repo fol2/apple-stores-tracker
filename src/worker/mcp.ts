@@ -36,7 +36,7 @@ const TOOLS = [
   {
     name: 'compare_prices',
     description:
-      'Compare one exact configuration across every market. Returns official local list prices with source URLs. No currency conversion and no tax-refund estimate is applied.',
+      'Compare one exact configuration across every market. Returns official local list prices with source URLs, and the education-store price where Apple offers one. No currency conversion and no tax-refund estimate is applied.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -73,7 +73,9 @@ function matches(offer: Offer, query: string | undefined): boolean {
 function uniqueConfigurations(offers: Offer[], familyId: string, query?: string) {
   const seen = new Map<string, Offer>()
   for (const offer of offers) {
-    if (offer.familyId !== familyId || !matches(offer, query)) continue
+    // Configurations are listed from the retail store: education prices are a
+    // second price for the same build, not a different build.
+    if (offer.familyId !== familyId || offer.store !== 'retail' || !matches(offer, query)) continue
     if (!seen.has(offer.configKey)) seen.set(offer.configKey, offer)
   }
   return [...seen.values()]
@@ -90,6 +92,7 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
       products: FAMILIES.map((f) => ({ id: f.id, name: f.name, categoryId: f.categoryId })),
       markets: MARKETS.map((m) => ({ id: m.id, name: m.name, currency: m.currency })),
       offerCount: snapshot.offers.length,
+      stores: ['retail', 'education'],
     }
   }
 
@@ -130,18 +133,24 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
     const priced = snapshot.offers.filter((o) => o.familyId === familyId && o.configKey === configKey)
     if (priced.length === 0) throw new Error('No prices found for that configuration.')
 
+    const retail = priced.filter((o) => o.store === 'retail')
+    const education = new Map(
+      priced.filter((o) => o.store === 'education').map((o) => [o.marketId, o]),
+    )
+
     return {
       productId: familyId,
       configuration_key: configKey,
       description: describe(priced[0]),
       collectedAt: snapshot.collectedAt,
-      note: 'Official local list prices. No exchange-rate conversion or tax-refund estimate applied.',
-      prices: priced
+      note: 'Official local list prices. No exchange-rate conversion or tax-refund estimate applied. An education price applies only to students of that country, and only one country can apply to any one buyer.',
+      prices: (retail.length ? retail : priced)
         .map((o) => ({
           marketId: o.marketId,
           market: MARKETS.find((m) => m.id === o.marketId)?.name ?? o.marketId,
           amount: o.amount,
           currency: o.currency,
+          educationAmount: education.get(o.marketId)?.amount ?? null,
           partNumber: o.partNumber,
           sourceUrl: o.sourceUrl,
         }))

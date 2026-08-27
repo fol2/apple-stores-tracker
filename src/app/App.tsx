@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { compare, convertBetween, displayCurrencies, formatBase, formatIn } from '../shared/convert'
+import { compare, displayCurrencies, formatIn, formatLocal } from '../shared/convert'
 import { SpreadAxis } from './components/SpreadAxis'
 import { MarketTable } from './components/MarketTable'
 import { SpecPicker } from './components/SpecPicker'
 import { Agents } from './components/Agents'
+import { CurrencyPicker, EducationPicker } from './components/Controls'
 import { dimensionsOf, loadSnapshot, offersFor, resolveSelection, type SnapshotResponse } from './lib/data'
 
 const HOME_MARKET = 'uk'
@@ -22,8 +23,9 @@ function Prices() {
   const [wanted, setWanted] = useState<Record<string, string>>({})
   const [priority, setPriority] = useState<string[]>([])
   const [showRefunds, setShowRefunds] = useState(false)
-  // Handy for anyone weighing a UK price against a second home market.
-  const [altCurrency, setAltCurrency] = useState<string | null>('HKD')
+  const [currency, setCurrency] = useState('GBP')
+  // At most one market: Apple's education store serves that country's students.
+  const [educationMarketId, setEducationMarketId] = useState<string | null>(null)
 
   useEffect(() => {
     loadSnapshot().then(setData, (e: Error) => setError(e.message))
@@ -43,8 +45,10 @@ function Prices() {
     if (!data || !resolved || !data.fx) return null
     return compare(offersFor(data.offers, familyId, resolved.configKey), data.fx, {
       applyRefunds: showRefunds,
+      currency,
+      educationMarketId,
     })
-  }, [data, resolved, familyId, showRefunds])
+  }, [data, resolved, familyId, showRefunds, currency, educationMarketId])
 
   const chooseSpec = (field: string, value: string) => {
     setWanted((current) => ({ ...current, [field]: value }))
@@ -69,10 +73,30 @@ function Prices() {
     )
   }
 
-  if (!data || !comparison || !resolved) {
+  if (!data) {
     return (
       <Shell>
         <p className="mt-16 text-soft">Loading prices…</p>
+      </Shell>
+    )
+  }
+
+  // Data arrived but yielded nothing to show. Saying so beats an eternal
+  // "Loading", which is indistinguishable from a hung request.
+  if (!resolved || !comparison) {
+    return (
+      <Shell
+        categories={data.categories}
+        families={data.families}
+        familyId={familyId}
+        onFamily={chooseFamily}
+      >
+        <p className="mt-16 text-lg">No prices for this product yet.</p>
+        <p className="mt-2 text-soft">
+          {data.fx
+            ? 'The last collection did not reach it. Try another product, or check back after the next run.'
+            : 'Exchange rates are unavailable, so prices cannot be converted yet.'}
+        </p>
       </Shell>
     )
   }
@@ -81,8 +105,8 @@ function Prices() {
   const cheapest = comparison.cheapest
   const home = comparison.rows.find((r) => r.market.id === HOME_MARKET)
   const saving =
-    home?.baseAmount != null && cheapest?.baseAmount != null
-      ? home.baseAmount - cheapest.baseAmount
+    home?.displayAmount != null && cheapest?.displayAmount != null
+      ? home.displayAmount - cheapest.displayAmount
       : null
 
   return (
@@ -112,6 +136,19 @@ function Prices() {
           </label>
         </div>
 
+        <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-3 border-y border-rule py-3">
+          <CurrencyPicker
+            currency={currency}
+            currencies={displayCurrencies(data.fx!)}
+            onChange={setCurrency}
+          />
+          <EducationPicker
+            markets={data.markets}
+            educationMarketId={educationMarketId}
+            onChange={setEducationMarketId}
+          />
+        </div>
+
         <SpecPicker dimensions={dimensions} selected={selectionOf(resolved)} onChange={chooseSpec} />
       </section>
 
@@ -119,28 +156,20 @@ function Prices() {
       <section className="mt-12 rounded-lg border border-rule bg-raised p-6 sm:p-8">
         <p className="eyebrow">Cheapest market</p>
 
-        {cheapest?.baseAmount != null ? (
+        {cheapest?.displayAmount != null ? (
           <>
             <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
               <span className="font-mono text-4xl font-bold tracking-[-0.06em] sm:text-6xl">
-                {formatBase(cheapest.baseAmount)}
+                {formatIn(cheapest.displayAmount, currency)}
               </span>
-              {altCurrency && altCurrency !== data.baseCurrency && cheapest.offer && (
-                <span className="font-mono text-xl text-soft">
-                  {(() => {
-                    const alt = convertBetween(
-                      cheapest.localAmount ?? cheapest.offer.amount,
-                      cheapest.offer.currency,
-                      altCurrency,
-                      data.fx!,
-                    )
-                    return alt === null ? null : formatIn(alt, altCurrency)
-                  })()}
-                </span>
-              )}
               <span className="text-xl">
                 {cheapest.market.flag} {cheapest.market.name}
               </span>
+              {cheapest.isEducation && (
+                <span className="rounded-full border border-low/50 px-2 py-0.5 text-xs text-low">
+                  education price
+                </span>
+              )}
             </div>
 
             <p className="mt-3 text-soft">
@@ -148,10 +177,10 @@ function Prices() {
                 <>
                   Listed at{' '}
                   <span className="tnum text-ink">
-                    {new Intl.NumberFormat('en-GB', {
-                      style: 'currency',
-                      currency: cheapest.offer.currency,
-                    }).format(cheapest.localAmount ?? cheapest.offer.amount)}
+                    {formatLocal(
+                      cheapest.localAmount ?? cheapest.offer.amount,
+                      cheapest.offer.currency,
+                    )}
                   </span>
                   {showRefunds && cheapest.policy.available && ' after an estimated refund'}.{' '}
                 </>
@@ -162,7 +191,9 @@ function Prices() {
                   ? (
                       <>
                         That is{' '}
-                        <span className="font-semibold text-low">{formatBase(saving)} less</span>{' '}
+                        <span className="font-semibold text-low">
+                          {formatIn(saving, currency)} less
+                        </span>{' '}
                         than the United Kingdom.
                       </>
                     )
@@ -174,13 +205,13 @@ function Prices() {
                 {cheapest.market.name} prices exclude sales tax, which is added at checkout and
                 varies by state. Expect roughly{' '}
                 <span className="tnum font-semibold">
-                  {formatBase(cheapest.baseAmount * 0.08)}
+                  {formatIn(cheapest.displayAmount * 0.08, currency)}
                 </span>{' '}
                 more at around 8%.
               </p>
             )}
 
-            <SpreadAxis rows={comparison.rows} homeMarketId={HOME_MARKET} />
+            <SpreadAxis rows={comparison.rows} homeMarketId={HOME_MARKET} currency={currency} />
           </>
         ) : (
           <p className="mt-3 text-soft">No market lists a price for this configuration.</p>
@@ -193,10 +224,7 @@ function Prices() {
           rows={comparison.rows}
           homeMarketId={HOME_MARKET}
           showRefunds={showRefunds}
-          fx={data.fx!}
-          altCurrency={altCurrency}
-          currencies={displayCurrencies(data.fx!)}
-          onAltCurrency={setAltCurrency}
+          currency={currency}
         />
       </section>
 

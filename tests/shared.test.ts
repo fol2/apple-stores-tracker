@@ -11,9 +11,15 @@ const fx: FxRates = {
   rates: { USD: 1.36, JPY: 216.64, EUR: 1.167, AUD: 1.896 },
 }
 
-const offer = (marketId: string, currency: string, amount: number): Offer => ({
+const offer = (
+  marketId: string,
+  currency: string,
+  amount: number,
+  store: 'retail' | 'education' = 'retail',
+): Offer => ({
   marketId,
   familyId: 'mac-mini',
+  store,
   configKey: 'memory-dimensionMemory=24gb|storage-dimensionCapacity=512gb',
   dimensions: [],
   amount,
@@ -89,7 +95,7 @@ describe('compare', () => {
     const refunded = compare(withAu, fx, { applyRefunds: true }).rows.find(
       (r) => r.market.id === 'au',
     )!
-    expect(refunded.baseAmount!).toBeLessThan(plain.baseAmount!)
+    expect(refunded.displayAmount!).toBeLessThan(plain.displayAmount!)
   })
 
   it('lists every market, so a gap reads as a gap and not as absence', () => {
@@ -97,7 +103,7 @@ describe('compare', () => {
     expect(rows).toHaveLength(MARKETS.length)
     const notSold = rows.find((r) => r.market.id === 'sg')!
     expect(notSold.offer).toBeUndefined()
-    expect(notSold.baseAmount).toBeNull()
+    expect(notSold.displayAmount).toBeNull()
   })
 
   it('ranks markets with no rate last, but still shows them', () => {
@@ -105,7 +111,7 @@ describe('compare', () => {
     expect(covered).toBe(4)
     const thailand = rows.find((r) => r.market.id === 'th')!
     expect(thailand.offer).toBeDefined()
-    expect(thailand.baseAmount).toBeNull()
+    expect(thailand.displayAmount).toBeNull()
   })
 })
 
@@ -187,5 +193,82 @@ describe('refund policy confidence', () => {
       const policy = refundPolicy(market.id)
       if (!policy.available) expect(policy.appleConfirmed, market.id).toBe(false)
     }
+  })
+})
+
+describe('education pricing', () => {
+  const offers = [
+    offer('uk', 'GBP', 899),
+    offer('uk', 'GBP', 799, 'education'),
+    offer('us', 'USD', 899),
+    offer('us', 'USD', 799, 'education'),
+  ]
+
+  it('quotes retail everywhere when no market is claimed', () => {
+    const { rows } = compare(offers, fx)
+    expect(rows.filter((r) => r.isEducation)).toHaveLength(0)
+    expect(rows.find((r) => r.market.id === 'uk')!.offer!.amount).toBe(899)
+  })
+
+  it('applies the education price to the one claimed market only', () => {
+    const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
+    const uk = rows.find((r) => r.market.id === 'uk')!
+    const us = rows.find((r) => r.market.id === 'us')!
+    expect(uk.isEducation).toBe(true)
+    expect(uk.offer!.amount).toBe(799)
+    // You cannot be a student in two countries at once.
+    expect(us.isEducation).toBe(false)
+    expect(us.offer!.amount).toBe(899)
+  })
+
+  it('falls back to retail where Apple has no education price', () => {
+    const { rows } = compare([offer('de', 'EUR', 1049)], fx, { educationMarketId: 'de' })
+    const de = rows.find((r) => r.market.id === 'de')!
+    expect(de.isEducation).toBe(false)
+    expect(de.offer!.amount).toBe(1049)
+  })
+
+  it('narrows the claimed market’s gap to the cheapest', () => {
+    const ukAt = (educationMarketId: string | null) =>
+      compare(offers, fx, { educationMarketId }).rows.find((r) => r.market.id === 'uk')!
+        .displayAmount!
+    expect(ukAt('uk')).toBeLessThan(ukAt(null))
+    expect(ukAt('uk')).toBe(799)
+  })
+})
+
+describe('display currency', () => {
+  const offers = [offer('us', 'USD', 1299), offer('jp', 'JPY', 199_800)]
+
+  it('reports every figure in the requested currency', () => {
+    const { rows, currency } = compare(offers, fx, { currency: 'JPY' })
+    expect(currency).toBe('JPY')
+    const us = rows.find((r) => r.market.id === 'us')!
+    expect(us.displayAmount).toBeCloseTo((1299 / 1.36) * 216.64, 4)
+  })
+
+  it('keeps the same ranking whichever currency is chosen', () => {
+    const inGbp = compare(offers, fx).rows.filter((r) => r.offer).map((r) => r.market.id)
+    const inJpy = compare(offers, fx, { currency: 'JPY' }).rows
+      .filter((r) => r.offer)
+      .map((r) => r.market.id)
+    expect(inJpy).toEqual(inGbp)
+  })
+})
+
+describe('offers written before education pricing existed', () => {
+  /**
+   * The regression this pins: a snapshot collected by an older version has no
+   * `store` field, and code that filters for `store === 'retail'` drops every
+   * one of its offers. On the live site that emptied the comparison and left
+   * the page loading forever, so the fallback belongs in the domain layer too.
+   */
+  const { store: _dropped, ...legacy } = offer('uk', 'GBP', 899)
+
+  it('still ranks when the store is unknown', () => {
+    const { rows } = compare([legacy as unknown as Offer], fx)
+    const uk = rows.find((r) => r.market.id === 'uk')!
+    expect(uk.offer?.amount).toBe(899)
+    expect(uk.isEducation).toBe(false)
   })
 })

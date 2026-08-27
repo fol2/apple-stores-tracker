@@ -8,17 +8,32 @@ export interface MarketPrice {
   policy: RefundPolicy
   /** Local price after the estimated refund, when refunds are being applied. */
   localAmount: number | undefined
-  /** `localAmount` in the base currency, or null when no rate is available. */
-  baseAmount: number | null
+  /** `localAmount` in the chosen display currency, or null with no rate. */
+  displayAmount: number | null
+  /** Whether this row is quoted from Apple's education store. */
+  isEducation: boolean
 }
 
 export interface Comparison {
   rows: MarketPrice[]
   cheapest: MarketPrice | undefined
-  /** Gap between the cheapest and dearest market, in the base currency. */
+  /** Gap between the cheapest and dearest market, in the display currency. */
   spread: number | null
   /** How many markets we hold both a price and a rate for. */
   covered: number
+  currency: string
+}
+
+export interface CompareOptions {
+  applyRefunds?: boolean
+  /** Currency every converted figure is shown in. */
+  currency?: string
+  /**
+   * The one market whose education price applies. Apple's education store
+   * serves students of that country, so at most one market can be claimed —
+   * quoting education prices everywhere would describe nobody's situation.
+   */
+  educationMarketId?: string | null
 }
 
 /**
@@ -71,34 +86,44 @@ export function formatIn(amount: number, currency: string, locale = 'en-GB'): st
  * no price still appear — a missing row is information, and silently dropping
  * them would make coverage gaps look like availability.
  */
-export function compare(
-  offers: Offer[],
-  fx: FxRates,
-  options: { applyRefunds: boolean } = { applyRefunds: false },
-): Comparison {
-  const byMarket = new Map(offers.map((o) => [o.marketId, o]))
+export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = {}): Comparison {
+  const { applyRefunds = false, currency = BASE_CURRENCY, educationMarketId = null } = options
 
   const rows: MarketPrice[] = MARKETS.map((market) => {
-    const offer = byMarket.get(market.id)
+    // Education pricing applies only where the viewer says they qualify, and
+    // falls back to retail if Apple has no education price for this build.
+    const wantEducation = market.id === educationMarketId
+    const forMarket = offers.filter((o) => o.marketId === market.id)
+    const education = forMarket.find((o) => o.store === 'education')
+    // A snapshot collected before education pricing has no `store` at all;
+    // treat those as retail rather than discarding the whole market.
+    const retail = forMarket.find((o) => o.store !== 'education')
+    const offer = (wantEducation ? education ?? retail : retail) ?? undefined
+
     const policy = refundPolicy(market.id)
-    const localAmount =
-      offer && options.applyRefunds ? afterRefund(offer.amount, policy) : offer?.amount
+    const localAmount = offer && applyRefunds ? afterRefund(offer.amount, policy) : offer?.amount
+
     return {
       market,
       offer,
       policy,
       localAmount,
-      baseAmount: localAmount === undefined ? null : toBase(localAmount, offer!.currency, fx),
+      displayAmount:
+        localAmount === undefined
+          ? null
+          : convertBetween(localAmount, offer!.currency, currency, fx),
+      isEducation: offer?.store === 'education',
     }
-  }).sort((a, b) => (a.baseAmount ?? Infinity) - (b.baseAmount ?? Infinity))
+  }).sort((a, b) => (a.displayAmount ?? Infinity) - (b.displayAmount ?? Infinity))
 
-  const priced = rows.map((r) => r.baseAmount).filter((v): v is number => v !== null)
+  const priced = rows.map((r) => r.displayAmount).filter((v): v is number => v !== null)
 
   return {
     rows,
-    cheapest: rows.find((r) => r.baseAmount !== null),
+    cheapest: rows.find((r) => r.displayAmount !== null),
     spread: priced.length > 1 ? Math.max(...priced) - Math.min(...priced) : null,
     covered: priced.length,
+    currency,
   }
 }
 
@@ -107,9 +132,4 @@ export function formatLocal(amount: number, currency: string, locale = 'en-GB'):
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
-export const formatBase = (amount: number, locale = 'en-GB'): string =>
-  new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: BASE_CURRENCY,
-    maximumFractionDigits: 0,
-  }).format(amount)
+

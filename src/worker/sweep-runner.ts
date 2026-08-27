@@ -1,14 +1,17 @@
-import { MARKETS } from '../shared/markets'
+import { MARKETS, STORES } from '../shared/markets'
+import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { changedPoints, type PricePoint } from '../shared/diff'
-import { collectMarket, discoverStructures } from '../scrape/sweep'
+import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
 import { fetchFxRates } from '../scrape/fx'
 import type { Offer, Snapshot } from '../shared/types'
 import {
+  getPlan,
   getRaw,
   getSnapshot,
   getStructures,
   getSweepState,
   putFx,
+  putPlan,
   putRaw,
   putSnapshot,
   putStructures,
@@ -16,15 +19,8 @@ import {
   type Env,
 } from './store'
 
-/** Leave roughly twelve hours between full passes. List prices are not volatile. */
-export const SWEEP_INTERVAL_MS = 12 * 60 * 60 * 1000
-
-/**
- * A sweep is a list of steps, one per cron tick. Step 0 rediscovers the
- * catalogue, then one step per market, then a final step that assembles the
- * snapshot and records history.
- */
-export const STEPS = ['discover', ...MARKETS.map((m) => m.id), 'assemble'] as const
+/** Idle this long after a pass finishes. List prices are not volatile. */
+export const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 const today = (now: Date): string => now.toISOString().slice(0, 10)
 
@@ -42,8 +38,8 @@ export async function runNextStep(env: Env, now = new Date()): Promise<string> {
   return runStep(env, state.step, now)
 }
 
-async function advance(env: Env, step: number, now: Date): Promise<void> {
-  const done = step + 1 >= STEPS.length
+async function advance(env: Env, step: number, total: number, now: Date): Promise<void> {
+  const done = step + 1 >= total
   const state = await getSweepState(env)
   await putSweepState(env, {
     step: done ? -1 : step + 1,
@@ -52,46 +48,88 @@ async function advance(env: Env, step: number, now: Date): Promise<void> {
   })
 }
 
+/**
+ * Step 0 discovers the catalogue and writes the plan; the last step assembles.
+ * Everything between is one planned batch of families.
+ */
 async function runStep(env: Env, step: number, now: Date): Promise<string> {
-  const name = STEPS[step]
+  const budget = new RequestBudget(REQUESTS_PER_TICK)
+
+  if (step === 0) {
+    try {
+      return await stepDiscover(env, budget)
+    } finally {
+      await advance(env, 0, Number.MAX_SAFE_INTEGER, now)
+    }
+  }
+
+  const plan = await getPlan(env)
+  if (!plan) {
+    // No plan means discovery never landed; restart the pass rather than
+    // spinning through steps that have nothing to price.
+    await putSweepState(env, { step: 0, startedAt: now.toISOString(), finishedAt: null })
+    return 'no plan; restarting at discovery'
+  }
+
+  const total = plan.length + 2
   try {
-    if (name === 'discover') return await stepDiscover(env)
-    if (name === 'assemble') return await stepAssemble(env, now)
-    return await stepMarket(env, name)
+    if (step > plan.length) return await stepAssemble(env, now)
+    return await stepCollect(env, plan[step - 1], budget)
   } finally {
-    // Advance even on failure: one bad market must not wedge the sweep, and
-    // the previous snapshot stays served until a good one replaces it.
-    await advance(env, step, now)
+    // Advance even on failure: one bad batch must not wedge the sweep, and the
+    // previous snapshot stays served until a good one replaces it.
+    await advance(env, step, total, now)
   }
 }
 
-async function stepDiscover(env: Env): Promise<string> {
-  // Structure is market-independent, so read it from the base-currency market.
-  const structures = await discoverStructures(MARKETS[0])
+async function stepDiscover(env: Env, budget: RequestBudget): Promise<string> {
+  const structures = await discoverStructures(MARKETS[0], budget)
   if (structures.structures.length === 0) throw new Error('discovery found no families')
+
+  const plan = planSweep(structures.structures)
   await putStructures(env, structures)
-  return `discovered ${structures.structures.length} families, ${structures.errors.length} failed`
+  await putPlan(env, plan)
+
+  return `discovered ${structures.structures.length} families, ${structures.errors.length} failed; planned ${plan.length} steps`
 }
 
-async function stepMarket(env: Env, marketId: string): Promise<string> {
-  const market = MARKETS.find((m) => m.id === marketId)!
+async function stepCollect(env: Env, step: SweepStep, budget: RequestBudget): Promise<string> {
+  const market = MARKETS.find((m) => m.id === step.marketId)!
   const structures = await getStructures(env)
   if (!structures) throw new Error('no catalogue yet; discovery must run first')
 
-  const collection = await collectMarket(market, structures.structures)
-  await putRaw(env, collection)
-  return `${marketId}: ${collection.offers.length} offers, ${collection.errors.length} errors`
+  const wanted = structures.structures.filter((s) => step.familyIds.includes(s.familyId))
+  const collection = await collectFamilies(market, step.store, wanted, budget)
+
+  // Batches of one market and store accumulate into a single stored slice.
+  const key = `${step.marketId}:${step.store}`
+  const existing = await getRaw(env, key)
+  const merged = new Map(
+    (existing?.offers ?? [])
+      .filter((o) => !step.familyIds.includes(o.familyId))
+      .map((o) => [`${o.familyId} ${o.configKey}`, o]),
+  )
+  for (const offer of collection.offers) merged.set(`${offer.familyId} ${offer.configKey}`, offer)
+
+  await putRaw(env, key, {
+    ...collection,
+    offers: [...merged.values()],
+    errors: [...(existing?.errors ?? []).filter((e) => !step.familyIds.includes(e.familyId)), ...collection.errors],
+  })
+
+  return `${key} [${step.familyIds.length} families]: ${collection.offers.length} offers, ${collection.errors.length} errors, ${budget.remaining} requests spare`
 }
 
 async function stepAssemble(env: Env, now: Date): Promise<string> {
-  const collections = await Promise.all(MARKETS.map((m) => getRaw(env, m.id)))
+  const keys = MARKETS.flatMap((m) => STORES.map((store) => `${m.id}:${store}`))
+  const collections = await Promise.all(keys.map((key) => getRaw(env, key)))
   const present = collections.filter((c): c is NonNullable<typeof c> => c !== null)
   if (present.length === 0) throw new Error('no market data to assemble')
 
   const offers = present.flatMap((c) => c.offers)
   const snapshot: Snapshot = {
     collectedAt: now.toISOString(),
-    markets: present.map((c) => c.marketId),
+    markets: [...new Set(present.map((c) => c.marketId))],
     offers,
     errors: present.flatMap((c) => c.errors),
   }
@@ -110,22 +148,30 @@ async function stepAssemble(env: Env, now: Date): Promise<string> {
   const points = changedPoints(previous?.offers ?? [], offers, today(now))
   await recordHistory(env, points)
 
-  return `assembled ${offers.length} offers from ${present.length} markets, ${points.length} price changes`
+  return `assembled ${offers.length} offers from ${snapshot.markets.length} markets, ${points.length} price changes`
 }
 
 /** D1 caps how many statements one batch can carry, so write in chunks. */
 async function recordHistory(env: Env, points: PricePoint[]): Promise<void> {
   const statement = env.HISTORY.prepare(
     `INSERT OR REPLACE INTO price_point
-       (market_id, family_id, config_key, currency, amount, observed_on)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+       (market_id, family_id, store, config_key, currency, amount, observed_on)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   )
   for (let i = 0; i < points.length; i += 100) {
     await env.HISTORY.batch(
       points
         .slice(i, i + 100)
         .map((p) =>
-          statement.bind(p.marketId, p.familyId, p.configKey, p.currency, p.amount, p.observedOn),
+          statement.bind(
+            p.marketId,
+            p.familyId,
+            p.store,
+            p.configKey,
+            p.currency,
+            p.amount,
+            p.observedOn,
+          ),
         ),
     )
   }

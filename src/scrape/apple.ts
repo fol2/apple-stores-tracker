@@ -1,5 +1,5 @@
 import type { DimensionValue, FamilyStructure, Offer } from '../shared/types'
-import { storeUrl, type Market } from '../shared/markets'
+import { storeUrl, type Market, type Store } from '../shared/markets'
 import { FAMILIES, type Family } from '../shared/families'
 
 /**
@@ -261,7 +261,12 @@ function parseCatalogStructure(family: Family, data: CatalogSelectionData): Fami
  * Price a catalogue family from its own select page. Unlike the CTO flow this
  * needs the page for the market being priced, because the prices live in it.
  */
-export function parseCatalogOffers(html: string, market: Market, family: Family): Offer[] {
+export function parseCatalogOffers(
+  html: string,
+  market: Market,
+  family: Family,
+  store: Store = 'retail',
+): Offer[] {
   const data = extractJsonAfter(html, 'productSelectionData:') as CatalogSelectionData
   if (isCto(data)) throw new Error(`${family.id} is a build-to-order family`)
 
@@ -271,7 +276,7 @@ export function parseCatalogOffers(html: string, market: Market, family: Family)
   const labelOf = (field: string, value: string) =>
     structure.dimensions.find((d) => d.field === field)?.values.find((v) => v.value === value)?.label ?? value
 
-  const sourceUrl = storeUrl(market, family.route)
+  const sourceUrl = storeUrl(market, family.route, store)
   const byConfig = new Map<string, Offer>()
 
   for (const product of data.products) {
@@ -290,6 +295,7 @@ export function parseCatalogOffers(html: string, market: Market, family: Family)
     byConfig.set(configKey, {
       marketId: market.id,
       familyId: family.id,
+      store,
       configKey,
       dimensions,
       amount,
@@ -303,10 +309,15 @@ export function parseCatalogOffers(html: string, market: Market, family: Family)
 }
 
 /** Apple's CTO pricing endpoint. Public, cacheable, no session required. */
-export function ctoUrl(market: Market, collection: string, selection: DimensionValue[]): string {
+export function ctoUrl(
+  market: Market,
+  collection: string,
+  selection: DimensionValue[],
+  store: Store = 'retail',
+): string {
   const params = new URLSearchParams({ collection, fae: 'true' })
   for (const { field, value } of selection) params.set(`sv.${field}`, value)
-  return storeUrl(market, `/shop/api/cto/update-config?${params}`)
+  return storeUrl(market, `/shop/api/cto/update-config?${params}`, store)
 }
 
 interface CtoResponse {
@@ -367,6 +378,7 @@ export function expandVariant(
   structure: FamilyStructure,
   variant: DimensionValue[],
   pricing: VariantPricing,
+  store: Store = 'retail',
 ): Offer[] {
   const priced = structure.dimensions
     .map((dimension) => {
@@ -381,13 +393,14 @@ export function expandVariant(
     combinations = combinations.flatMap((combo) => values.map((value) => [...combo, value]))
   }
 
-  const sourceUrl = storeUrl(market, family.route)
+  const sourceUrl = storeUrl(market, family.route, store)
   return combinations.map((combo) => {
     const amount = combo.reduce((sum, v) => sum + pricing.deltas[v.field][v.value], pricing.base)
     const dimensions = [...variant, ...combo]
     return {
       marketId: market.id,
       familyId: family.id,
+      store,
       configKey: configKeyOf(dimensions),
       dimensions,
       amount,

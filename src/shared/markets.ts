@@ -43,5 +43,14 @@ export const marketById = (id: string): Market | undefined =>
 
 export const storeOrigin = 'https://www.apple.com'
 
-export const storeUrl = (market: Market, path: string): string =>
-  `${storeOrigin}${market.prefix}${path}`
+/**
+ * Apple runs a parallel education store per market at `/<id>-edu`, with the
+ * same page structure and lower prices. Note the US takes a prefix here even
+ * though its retail store has none.
+ */
+export type Store = 'retail' | 'education'
+
+export const STORES: Store[] = ['retail', 'education']
+
+export const storeUrl = (market: Market, path: string, store: Store = 'retail'): string =>
+  `${storeOrigin}${store === 'education' ? `/${market.id}-edu` : market.prefix}${path}`

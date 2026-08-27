@@ -92,6 +92,10 @@ describe('expandVariant', () => {
    * for the M6 Mac mini with 24GB and 512GB, and we reach it by adding deltas
    * rather than by fetching that configuration.
    */
+  it('marks which of Apple’s stores quoted the price', () => {
+    expect(new Set(offers.map((o) => o.store))).toEqual(new Set(['retail']))
+  })
+
   it('reproduces Apple UK’s price for M6 / 24GB / 512GB', () => {
     const offer = offers.find(
       (o) =>
@@ -162,6 +166,16 @@ describe('ctoUrl', () => {
   it('uses a bare path for the US store', () => {
     expect(ctoUrl(marketById('us')!, 'X', [])).toBe(
       'https://www.apple.com/shop/api/cto/update-config?collection=X&fae=true',
+    )
+  })
+
+  it('points at the education store when asked, US prefix included', () => {
+    expect(ctoUrl(uk, 'X', [], 'education')).toBe(
+      'https://www.apple.com/uk-edu/shop/api/cto/update-config?collection=X&fae=true',
+    )
+    // The US retail store has no prefix, but its education store does.
+    expect(ctoUrl(marketById('us')!, 'X', [], 'education')).toBe(
+      'https://www.apple.com/us-edu/shop/api/cto/update-config?collection=X&fae=true',
     )
   })
 })

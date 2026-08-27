@@ -1,4 +1,5 @@
 import type { FamilyStructures, MarketCollection } from '../scrape/sweep'
+import type { SweepStep } from '../shared/plan'
 import type { FxRates, Snapshot } from '../shared/types'
 
 export interface Env {
@@ -13,7 +14,9 @@ export interface Env {
  */
 export const KEYS = {
   structures: 'structures:latest',
-  raw: (marketId: string) => `raw:${marketId}`,
+  plan: 'sweep:plan',
+  /** `key` is `<market>:<store>`, so retail and education stay separate. */
+  raw: (key: string) => `raw:${key}`,
   snapshot: 'snapshot:latest',
   fx: 'fx:latest',
   sweep: 'sweep:state',
@@ -28,9 +31,13 @@ const writeJson = (kv: KVNamespace, key: string, value: unknown): Promise<void> 
 export const getStructures = (env: Env) => readJson<FamilyStructures>(env.PRICES, KEYS.structures)
 export const putStructures = (env: Env, v: FamilyStructures) => writeJson(env.PRICES, KEYS.structures, v)
 
-export const getRaw = (env: Env, marketId: string) =>
-  readJson<MarketCollection>(env.PRICES, KEYS.raw(marketId))
-export const putRaw = (env: Env, v: MarketCollection) => writeJson(env.PRICES, KEYS.raw(v.marketId), v)
+export const getRaw = (env: Env, key: string) =>
+  readJson<MarketCollection>(env.PRICES, KEYS.raw(key))
+export const putRaw = (env: Env, key: string, v: MarketCollection) =>
+  writeJson(env.PRICES, KEYS.raw(key), v)
+
+export const getPlan = (env: Env) => readJson<SweepStep[]>(env.PRICES, KEYS.plan)
+export const putPlan = (env: Env, v: SweepStep[]) => writeJson(env.PRICES, KEYS.plan, v)
 
 export const getSnapshot = (env: Env) => readJson<Snapshot>(env.PRICES, KEYS.snapshot)
 export const putSnapshot = (env: Env, v: Snapshot) => writeJson(env.PRICES, KEYS.snapshot, v)

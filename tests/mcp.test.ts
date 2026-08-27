@@ -5,6 +5,7 @@ import type { Offer, Snapshot } from '../src/shared/types'
 const offer = (marketId: string, currency: string, amount: number): Offer => ({
   marketId,
   familyId: 'mac-mini',
+  store: 'retail',
   configKey: 'memory-dimensionMemory=24gb|storage-dimensionCapacity=512gb',
   dimensions: [
     { field: 'memory-dimensionMemory', value: '24gb', label: '24GB' },

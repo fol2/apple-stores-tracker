@@ -16,10 +16,12 @@
     "run_worker_first": ["/api/*", "/mcp", "/llms.txt"]
   },
 
-  // One step per tick: a step is at most ~60 subrequests, and a market that
-  // fails is a cheap retry rather than a lost sweep. A full pass is 17 steps,
-  // and the worker idles between passes -- see SWEEP_INTERVAL_MS.
-  "triggers": { "crons": ["*/15 * * * *"] },
+  // One planned batch per tick, each sized to fit a single invocation's
+  // subrequest allowance. A pass is ~105 batches across 15 markets and both of
+  // Apple's stores, so it needs a brisk tick to finish in hours rather than
+  // days; at three minutes a pass lands in under six. The worker then idles
+  // until the next pass is due -- see SWEEP_INTERVAL_MS.
+  "triggers": { "crons": ["*/3 * * * *"] },
 
   "kv_namespaces": [{ "binding": "PRICES", "id": "47e39bc1784b4a7d8942a7d9fb61c235" }],
 

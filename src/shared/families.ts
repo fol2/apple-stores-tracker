@@ -9,6 +9,14 @@ export interface Family {
   name: string
   /** Apple's own select-step path, appended to a market prefix. */
   route: string
+  /**
+   * Whether Apple's education store carries this family. iPhone is the
+   * exception and always has been — Apple has never given it an education
+   * price, and its education pages answer 541 in every market rather than 404,
+   * which is indistinguishable from throttling. Asking anyway costs six
+   * retries per family per market and yields nothing, so we do not ask.
+   */
+  educationPricing?: boolean
 }
 
 export const CATEGORIES: Category[] = [
@@ -26,6 +34,9 @@ export const CATEGORIES: Category[] = [
  * the only thing that needs editing; a route that 404s is reported as a
  * per-family collection error rather than failing the sweep.
  */
+export const hasEducationPricing = (family: Family): boolean =>
+  family.educationPricing !== false
+
 export const FAMILIES: Family[] = [
   { id: 'macbook-neo', categoryId: 'mac', name: 'MacBook Neo', route: '/shop/buy-mac/macbook-neo' },
   { id: 'macbook-air', categoryId: 'mac', name: 'MacBook Air', route: '/shop/buy-mac/macbook-air' },
@@ -39,11 +50,11 @@ export const FAMILIES: Family[] = [
   { id: 'ipad-air', categoryId: 'ipad', name: 'iPad Air', route: '/shop/buy-ipad/ipad-air' },
   { id: 'ipad', categoryId: 'ipad', name: 'iPad', route: '/shop/buy-ipad/ipad' },
   { id: 'ipad-mini', categoryId: 'ipad', name: 'iPad mini', route: '/shop/buy-ipad/ipad-mini' },
-  { id: 'iphone-17-pro', categoryId: 'iphone', name: 'iPhone 17 Pro', route: '/shop/buy-iphone/iphone-17-pro' },
-  { id: 'iphone-air', categoryId: 'iphone', name: 'iPhone Air', route: '/shop/buy-iphone/iphone-air' },
-  { id: 'iphone-17', categoryId: 'iphone', name: 'iPhone 17', route: '/shop/buy-iphone/iphone-17' },
-  { id: 'iphone-17e', categoryId: 'iphone', name: 'iPhone 17e', route: '/shop/buy-iphone/iphone-17e' },
-  { id: 'iphone-16', categoryId: 'iphone', name: 'iPhone 16', route: '/shop/buy-iphone/iphone-16' },
+  { id: 'iphone-17-pro', categoryId: 'iphone', name: 'iPhone 17 Pro', route: '/shop/buy-iphone/iphone-17-pro', educationPricing: false },
+  { id: 'iphone-air', categoryId: 'iphone', name: 'iPhone Air', route: '/shop/buy-iphone/iphone-air', educationPricing: false },
+  { id: 'iphone-17', categoryId: 'iphone', name: 'iPhone 17', route: '/shop/buy-iphone/iphone-17', educationPricing: false },
+  { id: 'iphone-17e', categoryId: 'iphone', name: 'iPhone 17e', route: '/shop/buy-iphone/iphone-17e', educationPricing: false },
+  { id: 'iphone-16', categoryId: 'iphone', name: 'iPhone 16', route: '/shop/buy-iphone/iphone-16', educationPricing: false },
   { id: 'apple-watch', categoryId: 'watch', name: 'Apple Watch', route: '/shop/buy-watch/apple-watch' },
   { id: 'apple-watch-se', categoryId: 'watch', name: 'Apple Watch SE', route: '/shop/buy-watch/apple-watch-se' },
   { id: 'apple-watch-ultra', categoryId: 'watch', name: 'Apple Watch Ultra', route: '/shop/buy-watch/apple-watch-ultra' },

@@ -3,14 +3,15 @@ import type { Offer } from './types'
 export interface PricePoint {
   marketId: string
   familyId: string
+  store: string
   configKey: string
   currency: string
   amount: number
   observedOn: string
 }
 
-const idOf = (o: { marketId: string; familyId: string; configKey: string }): string =>
-  `${o.marketId} ${o.familyId} ${o.configKey}`
+const idOf = (o: { marketId: string; familyId: string; store: string; configKey: string }): string =>
+  `${o.marketId} ${o.store} ${o.familyId} ${o.configKey}`
 
 /**
  * Reduce a full snapshot to the rows worth storing.
@@ -33,6 +34,7 @@ export function changedPoints(previous: Offer[], current: Offer[], observedOn: s
       {
         marketId: offer.marketId,
         familyId: offer.familyId,
+        store: offer.store,
         configKey: offer.configKey,
         currency: offer.currency,
         amount: offer.amount,

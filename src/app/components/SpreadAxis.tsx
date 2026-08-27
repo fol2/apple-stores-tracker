@@ -1,9 +1,10 @@
 import type { MarketPrice } from '../../shared/convert'
-import { formatBase } from '../../shared/convert'
+import { formatIn } from '../../shared/convert'
 
 interface Props {
   rows: MarketPrice[]
   homeMarketId: string
+  currency: string
 }
 
 /**
@@ -14,11 +15,11 @@ interface Props {
  * markets cluster tightly with one outlier, or spread evenly across hundreds
  * of pounds. That distinction is the actual decision this page exists for.
  */
-export function SpreadAxis({ rows, homeMarketId }: Props) {
-  const priced = rows.filter((r) => r.baseAmount !== null)
+export function SpreadAxis({ rows, homeMarketId, currency }: Props) {
+  const priced = rows.filter((r) => r.displayAmount !== null)
   if (priced.length < 2) return null
 
-  const amounts = priced.map((r) => r.baseAmount!)
+  const amounts = priced.map((r) => r.displayAmount!)
   const min = Math.min(...amounts)
   const max = Math.max(...amounts)
   const span = max - min || 1
@@ -41,7 +42,7 @@ export function SpreadAxis({ rows, homeMarketId }: Props) {
         {home && (
           <div
             className="settle absolute top-0 bottom-6 w-px bg-home/50"
-            style={{ left: `${position(home.baseAmount!)}%` }}
+            style={{ left: `${position(home.displayAmount!)}%` }}
           >
             <span className="absolute -top-1 left-1.5 text-[0.625rem] font-semibold whitespace-nowrap text-home">
               {home.market.name}
@@ -50,15 +51,15 @@ export function SpreadAxis({ rows, homeMarketId }: Props) {
         )}
 
         {priced.map((row, index) => {
-          const left = position(row.baseAmount!)
+          const left = position(row.displayAmount!)
           const isLow = index === 0
-          const isHigh = row.baseAmount === max
+          const isHigh = row.displayAmount === max
           return (
             <div
               key={row.market.id}
               className="settle absolute top-9 -translate-x-1/2 -translate-y-1/2"
               style={{ left: `${left}%` }}
-              title={`${row.market.name} — ${formatBase(row.baseAmount!)}`}
+              title={`${row.market.name} — ${formatIn(row.displayAmount!, currency)}`}
             >
               <span
                 aria-hidden
@@ -75,10 +76,10 @@ export function SpreadAxis({ rows, homeMarketId }: Props) {
             they would collide, and the table already names every market. */}
         <div className="absolute inset-x-0 top-12 flex justify-between text-xs">
           <span className="tnum font-semibold text-low">
-            {priced[0].market.flag} {formatBase(min)}
+            {priced[0].market.flag} {formatIn(min, currency)}
           </span>
           <span className="tnum font-semibold text-high">
-            {formatBase(max)} {priced.at(-1)!.market.flag}
+            {formatIn(max, currency)} {priced.at(-1)!.market.flag}
           </span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import type { DimensionValue, FamilyStructure, Offer } from '../shared/types'
-import { storeUrl, type Market } from '../shared/markets'
+import { storeUrl, type Market, type Store } from '../shared/markets'
 import { FAMILIES, type Family } from '../shared/families'
 import {
   ctoUrl,
@@ -44,9 +44,37 @@ const respectCoolOff = async (): Promise<void> => {
 
 const MAX_ATTEMPTS = 6
 
-const get = async (url: string): Promise<Response> => {
+/**
+ * A hard ceiling on outbound requests for one run.
+ *
+ * Cloudflare caps subrequests per Worker invocation, and a retry spends from
+ * the same allowance as a first attempt — so a throttled patch of families can
+ * quietly exhaust the budget that later families were counting on. Exceeding
+ * the cap kills the whole invocation mid-flight and loses the work already
+ * done, whereas running out of this budget fails one family cleanly and leaves
+ * the rest of the step intact.
+ */
+export class RequestBudget {
+  private spent = 0
+
+  constructor(private readonly limit: number) {}
+
+  claim(): void {
+    if (this.spent >= this.limit) {
+      throw new Error(`request budget of ${this.limit} exhausted`)
+    }
+    this.spent++
+  }
+
+  get remaining(): number {
+    return Math.max(0, this.limit - this.spent)
+  }
+}
+
+const get = async (url: string, budget: RequestBudget): Promise<Response> => {
   for (let attempt = 1; ; attempt++) {
     await respectCoolOff()
+    budget.claim()
 
     const response = await fetch(url, {
       headers: { 'user-agent': USER_AGENT, accept: 'text/html,application/json' },
@@ -90,6 +118,7 @@ async function pooled<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R
 export interface CollectionError {
   marketId: string
   familyId: string
+  store: Store
   message: string
 }
 
@@ -104,16 +133,19 @@ export interface FamilyStructures {
  * market-independent -- only the money differs -- so this runs against a
  * single market and the result is reused for all of them.
  */
-export async function discoverStructures(market: Market): Promise<FamilyStructures> {
+export async function discoverStructures(
+  market: Market,
+  budget: RequestBudget,
+): Promise<FamilyStructures> {
   const structures: FamilyStructure[] = []
   const errors: CollectionError[] = []
 
   await pooled(FAMILIES, async (family) => {
     try {
-      const html = await (await get(storeUrl(market, family.route))).text()
+      const html = await (await get(storeUrl(market, family.route), budget)).text()
       structures.push(parseFamilyStructure(html, family))
     } catch (error) {
-      errors.push({ marketId: market.id, familyId: family.id, message: String(error) })
+      errors.push({ marketId: market.id, familyId: family.id, store: 'retail', message: String(error) })
     }
   })
 
@@ -122,21 +154,23 @@ export async function discoverStructures(market: Market): Promise<FamilyStructur
 
 export interface MarketCollection {
   marketId: string
+  store: Store
   collectedAt: string
   offers: Offer[]
   errors: CollectionError[]
 }
 
 /**
- * Price every family in one market.
+ * Price a set of families in one market, at one of Apple's stores.
  *
- * Build-to-order families cost one request per chip variant, and each request
- * returns that variant's whole option matrix. Catalogue families cost one
- * request for the market's select page, which already carries every price.
+ * Callers pass a slice of the catalogue rather than all of it, so that a step
+ * fits inside the request budget it was planned against.
  */
-export async function collectMarket(
+export async function collectFamilies(
   market: Market,
+  store: Store,
   structures: FamilyStructure[],
+  budget: RequestBudget,
 ): Promise<MarketCollection> {
   const offers: Offer[] = []
   const errors: CollectionError[] = []
@@ -155,19 +189,19 @@ export async function collectMarket(
   await pooled(jobs, async (job) => {
     try {
       if (job.kind === 'catalog') {
-        const html = await (await get(storeUrl(market, job.family.route))).text()
-        offers.push(...parseCatalogOffers(html, market, job.family))
+        const html = await (await get(storeUrl(market, job.family.route, store), budget)).text()
+        offers.push(...parseCatalogOffers(html, market, job.family, store))
         return
       }
-      const url = ctoUrl(market, job.structure.collection!, job.variant)
-      const pricing = parseVariantPricing(await (await get(url)).json())
-      offers.push(...expandVariant(market, job.family, job.structure, job.variant, pricing))
+      const url = ctoUrl(market, job.structure.collection!, job.variant, store)
+      const pricing = parseVariantPricing((await (await get(url, budget)).json()) as never)
+      offers.push(...expandVariant(market, job.family, job.structure, job.variant, pricing, store))
     } catch (error) {
-      errors.push({ marketId: market.id, familyId: job.family.id, message: String(error) })
+      errors.push({ marketId: market.id, familyId: job.family.id, store, message: String(error) })
     }
   })
 
-  return { marketId: market.id, collectedAt: new Date().toISOString(), offers, errors }
+  return { marketId: market.id, store, collectedAt: new Date().toISOString(), offers, errors }
 }
 
 export type { Family }

@@ -22,7 +22,7 @@ const LLMS_TXT = `# Apple Price Tracker
 
 - Categories: ${CATEGORIES.map((c) => c.label).join(', ')}.
 - Markets: ${MARKETS.map((m) => m.name).join(', ')}.
-- Data source: Apple's own regional store product selectors.
+- Data source: Apple's own regional store product selectors, retail and education.
 - Base currency: ${BASE_CURRENCY}. Rates from open.er-api.com, refreshed daily.
 
 ## Agent access
@@ -41,7 +41,8 @@ const LLMS_TXT = `# Apple Price Tracker
 
 - Prices are official local list prices in each market's own currency.
 - MCP responses apply no currency conversion and no tax-refund estimate.
-- Tax-refund figures shown on the website are ESTIMATES, not quotes.
+- Tax-refund figures shown on the website are ESTIMATES, not quotes. Most schemes are voluntary for the retailer; where Apple's participation is unverified the site marks it.
+- Education prices come from Apple's education store. They apply only to students of that country, so at most one market's education price can apply to any one buyer.
 - US prices exclude sales tax, which is added at checkout.
 - \`collectedAt\` is when the data was gathered; Apple can change prices after it.
 
@@ -91,7 +92,7 @@ export default {
         return json({ error: 'family and config are required' }, 60)
       }
       const { results } = await env.HISTORY.prepare(
-        `SELECT market_id AS marketId, currency, amount, observed_on AS observedOn
+        `SELECT market_id AS marketId, store, currency, amount, observed_on AS observedOn
            FROM price_point
           WHERE family_id = ? AND config_key = ?
           ORDER BY observed_on ASC`,
