@@ -8,3 +8,5 @@ data/
 .collect.log
 .vite.log
 *.tsbuildinfo
+.wtail*.log
+.tail.log
