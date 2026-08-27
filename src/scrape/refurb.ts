@@ -35,12 +35,31 @@ interface GridTile {
  * no pagination and no second endpoint, so a category costs exactly one
  * request.
  */
+/**
+ * A grid that rendered but holds nothing.
+ *
+ * Apple ships the page with no bootstrap at all when a category is sold out --
+ * today its UK refurbished Macs are -- so an absent bootstrap on its own
+ * cannot be read as a failure. This marker is the page's own container, and it
+ * is present on a full grid and an empty one alike, so it separates "Apple has
+ * none" from "this is not the page we asked for".
+ */
+const GRID_CONTAINER = 'rf-refurb-category'
+
 export function parseRefurbGrid(
   html: string,
   category: RefurbCategory,
   currency: string,
   gridUrl: string,
 ): RefurbListing[] {
+  if (!html.includes('window.REFURB_GRID_BOOTSTRAP')) {
+    // An empty shelf is a successful read. Calling it an error would carry the
+    // last units forward for ever, so a sold-out Mac would keep its price on
+    // the page long after Apple stopped having one.
+    if (html.includes(GRID_CONTAINER)) return []
+    throw new Error(`not a refurbished ${category} grid`)
+  }
+
   const data = extractJsonAfter(html, 'window.REFURB_GRID_BOOTSTRAP') as { tiles?: GridTile[] }
   const listings: RefurbListing[] = []
 

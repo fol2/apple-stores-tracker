@@ -37,6 +37,28 @@ describe('parseRefurbGrid', () => {
   })
 })
 
+describe('an empty grid', () => {
+  const page = (body: string) => `<!doctype html><html><body>${body}</body></html>`
+
+  /**
+   * Apple ships the page with no bootstrap when a category is sold out — its
+   * UK refurbished Macs were, the day this shipped. Reporting that as a failed
+   * read would carry the last units forward for ever, so a sold-out machine
+   * would keep its price on the page long after Apple stopped having one.
+   */
+  it('reads a sold-out category as empty, not as a failure', () => {
+    const sold = page('<div class="rf-refurb-category">currently unavailable</div>')
+    expect(parseRefurbGrid(sold, 'mac', 'GBP', 'https://example.com')).toEqual([])
+  })
+
+  /** A page that is not the grid at all still has to fail loudly. */
+  it('refuses a page that is not a refurbished grid', () => {
+    expect(() => parseRefurbGrid(page('<h1>Something else</h1>'), 'mac', 'GBP', 'x')).toThrow(
+      'not a refurbished mac grid',
+    )
+  })
+})
+
 describe('processor identity', () => {
   it('reads the chip and cores out of a listing title', () => {
     expect(processorInTitle(listings[0].title)).toEqual({ chip: 'm5pro', cpu: 15, gpu: 16 })
