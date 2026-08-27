@@ -42,29 +42,34 @@ across all workers when Apple answers a burst with HTTP 541.
 ## How it runs
 
 One Cloudflare Worker serves the site, the API and the MCP endpoint, and does its
-collecting from a cron trigger. The work is layered, because the three things it needs to
-keep current move at completely different speeds.
+collecting from a cron trigger. The work is layered, because the things it needs to keep
+current move at completely different speeds.
 
 ```
 cron (*/3) ─► whichever tier is most overdue
   │
   ├─ 1. continue a sweep   in progress?      one planned batch
-  ├─ 2. refresh rates      > 1 hour old?     1 request
-  ├─ 3. full sweep         > 7 days old?     ~90 batches, ~4.6 hours
-  ├─ 4. probe              > 2 hours old?    one rotating slice, ~15 requests
+  ├─ 2. full sweep         > 7 days old?     ~90 batches, ~4.6 hours
+  ├─ 3. probe              > 2 hours old?    one rotating slice, ~15 requests
   └─    otherwise idle
 ```
 
-**Rates** cost one request and every converted figure depends on them, so they refresh
-hourly. **Prices** cost ~1,245 requests to read in full but change a handful of times a
-year, so scanning on a timer would spend that budget over and over to learn that nothing
-happened. Between the two sits the **probe**: it re-reads one rotating slice and compares
-it with the stored snapshot. Apple moves many prices at once when it moves any, so a slice
-is enough to notice, and a full sweep only runs when there is something to find. A forced
-weekly sweep is the backstop, since comparing prices cannot reveal a product Apple has
-only just added.
+**Prices** cost ~1,245 requests to read in full but change a handful of times a year, so
+scanning on a timer would spend that budget over and over to learn that nothing happened.
+Ahead of it sits the **probe**: it re-reads one rotating slice and compares it with the
+stored snapshot. Apple moves many prices at once when it moves any, so a slice is enough
+to notice, and a full sweep only runs when there is something to find. A forced weekly
+sweep is the backstop, since comparing prices cannot reveal a product Apple has only just
+added.
 
 Steady state is roughly 200 requests a day rather than 2,500.
+
+**Rates** are not on the cron at all. The feed publishes when its next quote is due, so
+the Worker re-reads it on the request path the first time someone asks after that moment,
+serving the quote it already holds and replacing it behind the response. Reading a daily
+feed from an hourly timer spent twenty-three requests a day to learn nothing and still
+left a new quote unseen for up to an hour; this costs nothing while nobody is looking and
+picks the new one up within minutes.
 
 A sweep is split into ~90 planned batches, each sized to fit one invocation's subrequest
 allowance, so a failed batch is a cheap retry rather than a lost pass. `GET /api/status`
@@ -81,8 +86,15 @@ substituting the number. iPhone is skipped there: it has no education price, and
 answers `541` for it — the same status it uses for throttling — so asking costs six
 retries per family per market and yields nothing.
 
-Exchange rates come from `open.er-api.com` (keyless, daily). It is the only free feed that
-covers every currency here — the ECB feeds, and anything built on them, have no TWD.
+Exchange rates come from `open.er-api.com` (keyless, daily, and it says when the next
+quote lands). Of the free keyless feeds, only it, FloatRates and a jsDelivr-hosted mirror
+cover every currency here — the ECB feeds, and anything built on them, have no TWD.
+
+Genuinely intraday rates are available free (Coinbase quotes every currency here and moves
+within a minute), and are not used. The three dedicated feeds disagree with each other by
+about 0.5% on the thinner pairs — more than a day of intraday movement — so a tick-by-tick
+number would buy precision the underlying data does not have, on a page comparing list
+prices that move a few times a year. The quote time is shown in the footer instead.
 
 ## Development
 

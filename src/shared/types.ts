@@ -59,7 +59,12 @@ export interface Snapshot {
 /** Base-currency conversion rates, keyed by the market's currency. */
 export interface FxRates {
   base: string
+  /** When the source says it quoted these rates. */
   fetchedAt: string
+  /** When we last read the source. Absent on records written before this field. */
+  refreshedAt?: string
+  /** When the source says its next quote is due, when it says at all. */
+  nextUpdateAt?: string | null
   /** `rates[CUR]` = how many CUR one unit of `base` buys. */
   rates: Record<string, number>
 }

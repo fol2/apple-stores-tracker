@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   chooseWork,
-  FX_INTERVAL_MS,
   MAX_SWEEP_AGE_MS,
   PROBE_INTERVAL_MS,
   type ScheduleInput,
@@ -12,7 +11,6 @@ const ago = (ms: number) => new Date(now.getTime() - ms).toISOString()
 
 const state = (overrides: Partial<ScheduleInput> = {}): ScheduleInput => ({
   step: -1,
-  fxAt: ago(1000),
   probeAt: ago(1000),
   finishedAt: ago(1000),
   ...overrides,
@@ -29,16 +27,8 @@ describe('chooseWork', () => {
    * until the pass reaches its assemble step.
    */
   it('finishes an unfinished sweep before starting anything else', () => {
-    const midSweep = state({ step: 7, fxAt: null, probeAt: null, finishedAt: null })
+    const midSweep = state({ step: 7, probeAt: null, finishedAt: null })
     expect(chooseWork(midSweep, now)).toBe('continue-sweep')
-  })
-
-  it('refreshes rates ahead of cheaper-to-skip work', () => {
-    expect(chooseWork(state({ fxAt: ago(FX_INTERVAL_MS + 1) }), now)).toBe('refresh-rates')
-  })
-
-  it('leaves rates alone until they are actually stale', () => {
-    expect(chooseWork(state({ fxAt: ago(FX_INTERVAL_MS - 1000) }), now)).toBe('idle')
   })
 
   it('probes once the interval has passed', () => {
@@ -55,9 +45,7 @@ describe('chooseWork', () => {
   })
 
   it('treats never-having-run as overdue, so a cold start collects', () => {
-    const cold = state({ fxAt: null, probeAt: null, finishedAt: null })
-    expect(chooseWork(cold, now)).toBe('refresh-rates')
-    expect(chooseWork({ ...cold, fxAt: ago(0) }, now)).toBe('start-sweep')
+    expect(chooseWork(state({ probeAt: null, finishedAt: null }), now)).toBe('start-sweep')
   })
 
   it('never starts a second sweep while one is running', () => {

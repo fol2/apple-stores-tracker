@@ -11,7 +11,7 @@ Load this skill only for product code, scraping, price data, Worker/API/MCP, UI,
 
 - `src/scrape/`: Apple selector/configurator parsing, provider requests, shared throttling, bounded retries, and `RequestBudget`.
 - `src/shared/`: stable types, markets/stores, product families, conversion/refund logic, price diffs, sweep planning, and scheduling.
-- `src/worker/`: Cloudflare Worker HTTP/API/MCP entry point, KV/D1 storage, cron scheduling, sweep/probe/rate execution, and history draining.
+- `src/worker/`: Cloudflare Worker HTTP/API/MCP entry point, KV/D1 storage, cron scheduling, sweep/probe execution, request-path exchange-rate refresh, and history draining.
 - `src/app/`: React/Vite reader UI and comparison controls.
 - `migrations/`: ordered D1 schema history. Never rewrite an applied migration.
 - `tests/fixtures/`: captured provider inputs for deterministic fixture-backed tests.
@@ -27,6 +27,7 @@ npm test -- tests/shared.test.ts
 npm test -- tests/plan.test.ts
 npm test -- tests/schedule.test.ts
 npm test -- tests/mcp.test.ts
+npm test -- tests/worker/rates.test.ts
 npm test
 npm run build
 npm run ci

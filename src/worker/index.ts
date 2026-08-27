@@ -3,7 +3,8 @@ import { BASE_CURRENCY, MARKETS } from '../shared/markets'
 import { REFUND_POLICIES } from '../shared/refunds'
 import { handleMcp } from './mcp'
 import { runNextStep } from './sweep-runner'
-import { getFx, getSnapshot, getSweepState, type Env } from './store'
+import { currentRates } from './rates'
+import { getSnapshot, getSweepState, type Env } from './store'
 
 const json = (body: unknown, maxAge: number): Response =>
   Response.json(body, {
@@ -23,7 +24,7 @@ const LLMS_TXT = `# Apple Price Tracker
 - Categories: ${CATEGORIES.map((c) => c.label).join(', ')}.
 - Markets: ${MARKETS.map((m) => m.name).join(', ')}.
 - Data source: Apple's own regional store product selectors, retail and education.
-- Base currency: ${BASE_CURRENCY}. Rates from open.er-api.com, refreshed daily.
+- Base currency: ${BASE_CURRENCY}. Rates from open.er-api.com, re-read on request as soon as the feed republishes.
 
 ## Agent access
 
@@ -53,7 +54,7 @@ marks are trademarks of Apple Inc.
 `
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
     if (url.pathname === '/mcp') {
@@ -67,7 +68,7 @@ export default {
     }
 
     if (url.pathname === '/api/snapshot') {
-      const [snapshot, fx] = await Promise.all([getSnapshot(env), getFx(env)])
+      const [snapshot, fx] = await Promise.all([getSnapshot(env), currentRates(env, ctx)])
       if (!snapshot) return json({ error: 'No price data collected yet.' }, 60)
       return json(
         {
@@ -106,7 +107,7 @@ export default {
     if (url.pathname === '/api/status') {
       const [snapshot, fx, state] = await Promise.all([
         getSnapshot(env),
-        getFx(env),
+        currentRates(env, ctx),
         getSweepState(env),
       ])
       return json(
@@ -115,7 +116,11 @@ export default {
           markets: snapshot?.markets ?? [],
           offers: snapshot?.offers.length ?? 0,
           errors: snapshot?.errors.length ?? 0,
-          rates: { fetchedAt: fx?.fetchedAt ?? null, refreshedAt: state.fxAt },
+          rates: {
+            quotedAt: fx?.fetchedAt ?? null,
+            readAt: fx?.refreshedAt ?? null,
+            nextQuoteDue: fx?.nextUpdateAt ?? null,
+          },
           changeDetection: { lastProbeAt: state.probeAt, position: state.probeCursor },
           fullSweep: {
             inProgress: state.step >= 0,

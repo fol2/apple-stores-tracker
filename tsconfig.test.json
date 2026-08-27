@@ -16,5 +16,7 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["tests", "vite.config.ts", "vitest.config.ts"]
+  "include": ["tests", "vite.config.ts", "vitest.config.ts"],
+  // Worker-level tests reach Cloudflare globals, which Node's types contradict.
+  "exclude": ["tests/worker"]
 }
