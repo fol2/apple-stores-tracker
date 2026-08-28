@@ -19,6 +19,17 @@ export interface SweepStep {
   marketId: string
   store: Store
   familyIds: string[]
+  /**
+   * Half-open slice of a family's variants, for a family too expensive to
+   * price in one step. Keyed by family id, absent when nothing was split.
+   *
+   * Without this a family simply lost its tail: a MacBook Pro costs one
+   * request per build and Apple sells thirty-two of them, against a thirty
+   * request tick budget, so two builds failed in every market on every sweep
+   * -- and the failure was a logged error rather than a missing page, so the
+   * catalogue just quietly had holes in it.
+   */
+  slices?: Record<string, [number, number]>
 }
 
 /**
@@ -59,20 +70,42 @@ export function planSweep(structures: FamilyStructure[]): SweepStep[] {
         .map((structure) => ({ id: structure.familyId, cost: familyRequestCost(structure) }))
         .sort((a, b) => b.cost - a.cost || a.id.localeCompare(b.id))
 
-      const bins: { familyIds: string[]; cost: number }[] = []
+      // A family costing more than one step is cut into slices of its variants
+      // first, so that packing never has to place something that cannot fit.
+      const parts: { id: string; cost: number; slice?: [number, number] }[] = []
       for (const family of families) {
-        const bin = bins.find((b) => b.cost + family.cost <= REQUESTS_PER_STEP)
-        if (bin) {
-          bin.familyIds.push(family.id)
-          bin.cost += family.cost
-        } else {
-          // A family costing more than a whole step still gets one of its own:
-          // it cannot be split, and refusing it would drop it from the sweep.
-          bins.push({ familyIds: [family.id], cost: family.cost })
+        if (family.cost <= REQUESTS_PER_STEP) {
+          parts.push({ id: family.id, cost: family.cost })
+          continue
+        }
+        for (let from = 0; from < family.cost; from += REQUESTS_PER_STEP) {
+          const to = Math.min(from + REQUESTS_PER_STEP, family.cost)
+          parts.push({ id: family.id, cost: to - from, slice: [from, to] })
         }
       }
 
-      for (const bin of bins) steps.push({ marketId: market.id, store, familyIds: bin.familyIds })
+      const bins: { familyIds: string[]; slices: Record<string, [number, number]>; cost: number }[] = []
+      for (const part of parts) {
+        // Two slices of one family must not share a step: the step names each
+        // family once, so the second slice would overwrite the first's range.
+        const bin = bins.find(
+          (b) => b.cost + part.cost <= REQUESTS_PER_STEP && !b.familyIds.includes(part.id),
+        )
+        const target = bin ?? { familyIds: [], slices: {}, cost: 0 }
+        if (!bin) bins.push(target)
+        target.familyIds.push(part.id)
+        target.cost += part.cost
+        if (part.slice) target.slices[part.id] = part.slice
+      }
+
+      for (const bin of bins) {
+        steps.push({
+          marketId: market.id,
+          store,
+          familyIds: bin.familyIds,
+          ...(Object.keys(bin.slices).length > 0 ? { slices: bin.slices } : {}),
+        })
+      }
     }
   }
 

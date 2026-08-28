@@ -3,7 +3,12 @@ import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
 import { configKeyOf, packOffers } from '../shared/offers'
-import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
+import {
+  collectFamilies,
+  discoverStructures,
+  RequestBudget,
+  type MarketCollection,
+} from '../scrape/sweep'
 import { collectRefurb } from '../scrape/refurb'
 import type { Offer, Snapshot } from '../shared/types'
 import {
@@ -230,29 +235,60 @@ async function stepDiscover(env: Env, budget: RequestBudget): Promise<string> {
   return `discovered ${structures.structures.length} families, ${structures.errors.length} failed; planned ${plan.length} steps`
 }
 
+/**
+ * Which families this step is re-pricing from scratch.
+ *
+ * A family's previous results are cleared by whichever step prices its first
+ * variants; later slices of the same family add to them. Clearing on every
+ * slice would keep only the last one -- a MacBook Pro reduced to its final two
+ * builds, which is a worse failure than the missing tail that splitting exists
+ * to fix, and just as quiet.
+ */
+export const familiesReplacedBy = (step: SweepStep): string[] =>
+  step.familyIds.filter((id) => (step.slices?.[id]?.[0] ?? 0) === 0)
+
+/** Fold one step's results into the market and store's accumulated slice. */
+export function foldStep(
+  existing: Pick<MarketCollection, 'offers' | 'errors'> | null,
+  collection: Pick<MarketCollection, 'offers' | 'errors'>,
+  step: SweepStep,
+): Pick<MarketCollection, 'offers' | 'errors'> {
+  const replacing = familiesReplacedBy(step)
+  const merged = new Map(
+    (existing?.offers ?? [])
+      .filter((o) => !replacing.includes(o.familyId))
+      .map((o) => [`${o.familyId} ${o.configKey}`, o]),
+  )
+  for (const offer of collection.offers) merged.set(`${offer.familyId} ${offer.configKey}`, offer)
+
+  return {
+    offers: [...merged.values()],
+    errors: [
+      ...(existing?.errors ?? []).filter((e) => !replacing.includes(e.familyId)),
+      ...collection.errors,
+    ],
+  }
+}
+
 async function stepCollect(env: Env, step: SweepStep, budget: RequestBudget): Promise<string> {
   const market = MARKETS.find((m) => m.id === step.marketId)!
   const structures = await getStructures(env)
   if (!structures) throw new Error('no catalogue yet; discovery must run first')
 
-  const wanted = structures.structures.filter((s) => step.familyIds.includes(s.familyId))
+  const wanted = structures.structures
+    .filter((s) => step.familyIds.includes(s.familyId))
+    .map((s) => {
+      const slice = step.slices?.[s.familyId]
+      return slice ? { ...s, variants: s.variants.slice(slice[0], slice[1]) } : s
+    })
   const collection = await collectFamilies(market, step.store, wanted, budget)
 
   // Batches of one market and store accumulate into a single stored slice.
   const key = `${step.marketId}:${step.store}`
   const existing = await getRaw(env, key)
-  const merged = new Map(
-    (existing?.offers ?? [])
-      .filter((o) => !step.familyIds.includes(o.familyId))
-      .map((o) => [`${o.familyId} ${o.configKey}`, o]),
-  )
-  for (const offer of collection.offers) merged.set(`${offer.familyId} ${offer.configKey}`, offer)
 
-  await putRaw(env, key, {
-    ...collection,
-    offers: [...merged.values()],
-    errors: [...(existing?.errors ?? []).filter((e) => !step.familyIds.includes(e.familyId)), ...collection.errors],
-  })
+  const folded = foldStep(existing, collection, step)
+  await putRaw(env, key, { ...collection, ...folded })
 
   return `${key} [${step.familyIds.length} families]: ${collection.offers.length} offers, ${collection.errors.length} errors, ${budget.remaining} requests spare`
 }
