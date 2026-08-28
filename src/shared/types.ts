@@ -1,3 +1,5 @@
+import type { StoredOffer } from './offers'
+
 /** A single selectable hardware option, e.g. memory 24GB. */
 export interface DimensionValue {
   /** Apple's dimension id, e.g. `memory-dimensionMemory`. */
@@ -51,7 +53,11 @@ export interface FamilyStructure {
 export interface Snapshot {
   collectedAt: string
   markets: string[]
-  offers: Offer[]
+  /**
+   * Offers as stored, without the two fields that restate the others. Read
+   * them back through `hydrateOffers` -- see `shared/offers.ts` for why.
+   */
+  offers: StoredOffer[]
   /** Families that failed to collect, with the reason. */
   errors: { marketId: string; familyId: string; message: string }[]
 }

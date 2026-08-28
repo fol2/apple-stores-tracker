@@ -2,6 +2,7 @@ import { MARKETS, marketById, REFURB_MARKET, STORES } from '../shared/markets'
 import { planSweep, REQUESTS_PER_TICK, type SweepStep } from '../shared/plan'
 import { chooseWork } from '../shared/schedule'
 import { changedPoints, type PricePoint } from '../shared/diff'
+import { configKeyOf, packOffers } from '../shared/offers'
 import { collectFamilies, discoverStructures, RequestBudget } from '../scrape/sweep'
 import { collectRefurb } from '../scrape/refurb'
 import type { Offer, Snapshot } from '../shared/types'
@@ -137,10 +138,12 @@ async function stepProbe(env: Env, now: Date): Promise<string> {
     return 'probe: nothing to sample in this slice'
   }
 
+  // Keyed on a derived configKey: the snapshot stores dimensions only, and
+  // this slice is one market's worth rather than the whole catalogue.
   const known = new Map(
     snapshot.offers
       .filter((o) => o.marketId === step.marketId && (o.store ?? 'retail') === step.store)
-      .map((o) => [`${o.familyId} ${o.configKey}`, o.amount]),
+      .map((o) => [`${o.familyId} ${configKeyOf(o.dimensions)}`, o.amount]),
   )
 
   let collection
@@ -260,7 +263,7 @@ async function stepAssemble(env: Env, now: Date): Promise<string> {
   const present = collections.filter((c): c is NonNullable<typeof c> => c !== null)
   if (present.length === 0) throw new Error('no market data to assemble')
 
-  const offers = present.flatMap((c) => c.offers)
+  const offers = packOffers(present.flatMap((c) => c.offers))
   const snapshot: Snapshot = {
     collectedAt: now.toISOString(),
     markets: [...new Set(present.map((c) => c.marketId))],

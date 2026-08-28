@@ -1,6 +1,7 @@
 import type { Category, Family } from '../../shared/families'
 import type { Market } from '../../shared/markets'
 import type { RefundPolicy } from '../../shared/refunds'
+import { hydrateOffers, type StoredOffer } from '../../shared/offers'
 import type {
   DimensionValue,
   FxRates,
@@ -34,14 +35,15 @@ export async function loadSnapshot(): Promise<SnapshotResponse> {
   const body = await response.json()
   if (body.error) throw new Error(body.error)
 
-  const data = body as SnapshotResponse
+  const data = body as Omit<SnapshotResponse, 'offers'> & { offers: StoredOffer[] }
   return {
     ...data,
-    // A snapshot collected before education prices existed has no `store`.
-    // Defaulting it here, at the one boundary where stored data enters the
-    // app, keeps a stale snapshot rendering instead of filtering every offer
-    // out and leaving the page stuck on "Loading".
-    offers: data.offers.map((offer) => ({ ...offer, store: offer.store ?? 'retail' })),
+    // The snapshot ships without the two fields that restate the others, so
+    // they are rebuilt here -- the one boundary where stored data enters the
+    // app. A snapshot collected before education prices existed also has no
+    // `store`; defaulting it in the same pass keeps a stale snapshot rendering
+    // instead of filtering every offer out and leaving the page on "Loading".
+    offers: hydrateOffers(data.offers.map((o) => ({ ...o, store: o.store ?? 'retail' }))),
   }
 }
 
