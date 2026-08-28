@@ -5,6 +5,7 @@ import {
   processorInTitle,
   processorOf,
   refurbCategoryFor,
+  refurbStockFor,
   secondHandFor,
 } from '../src/shared/secondhand'
 import type { DimensionValue, Offer } from '../src/shared/types'
@@ -26,7 +27,7 @@ const offer = (familyId: string, dimensions: [string, string][]): Offer => ({
 
 describe('parseRefurbGrid', () => {
   it('reads every unit Apple has, from one page', () => {
-    expect(listings).toHaveLength(17)
+    expect(listings).toHaveLength(21)
     expect(listings[0]).toMatchObject({ partNumber: 'G1MLBB/A', amount: 2669, currency: 'GBP' })
   })
 
@@ -103,21 +104,23 @@ describe('secondHandFor', () => {
   })
 
   /**
-   * An iPad configuration pins storage and connectivity but says nothing about
-   * the generation, and Apple refurbishes several at once — so a matched unit
-   * may be a chip generation behind the new price it sits next to.
+   * An iPad Air configuration names no chip — Apple's buy page does not sell
+   * one — so the table declares the generation instead. Apple sells the M4;
+   * the M3s on the shelf are therefore the model before it, and calling them
+   * current is the error this declaration removes.
    */
-  it('will not call an iPad match exact, because nothing pins the generation', () => {
+  it('does not pass an older iPad Air off as the one on sale', () => {
     const air = offer('ipad-air', [
       ['dimensionScreensize', '11inch'],
       ['dimensionCapacity', '128gb'],
       ['dimensionConnection', 'wifi'],
     ])
-    const match = current(air)!
+    const { thisGeneration, earlierGeneration } = secondHandFor(air, listings)
 
-    expect(match.listings).toHaveLength(2)
-    expect(match.exact).toBe(false)
-    expect(match.unpinned).toEqual(['release year'])
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.listings).toHaveLength(2)
+    expect(earlierGeneration!.basis).toBe('earlier-generation')
+    expect(earlierGeneration!.exact).toBe(false)
   })
 
   /**
@@ -212,9 +215,11 @@ describe('secondHandFor', () => {
       ]))!
     expect(se.listings.map((l) => l.model)).toEqual(['watchse3'])
     // Aluminium or titanium changes the price and our configurations do not
-    // say which, so a watch is never quoted as the same machine.
+    // say which, so a watch is never quoted as the same machine. The
+    // generation no longer appears here: the table declares it, so the search
+    // matched on it rather than warning that it could not.
     expect(se.exact).toBe(false)
-    expect(se.unpinned).toEqual(['case material', 'generation'])
+    expect(se.unpinned).toEqual(['case material'])
   })
 
   /**
@@ -278,6 +283,137 @@ describe('secondHandFor', () => {
     expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['iphone15'])
   })
 
+  /**
+   * The case that prompted this: a Mac Studio on sale as an M5 Max, one M3
+   * Ultra on the shelf, and nothing shown. Apple's refurbished stock is
+   * whatever came back, so requiring the earlier generation to match storage
+   * and memory exactly made the comparison a lottery — across the catalogue
+   * only 33 of 306 configurations could win it. The unit is offered instead,
+   * with the build it actually is.
+   */
+  it('offers an earlier generation at a nearby build, and names the difference', () => {
+    const studio = offer('mac-studio', [
+      ['processor-dimensionChip-cpuCoreCount-gpuCoreCount', 'm5max-18-40'],
+      ['memory-dimensionMemory', '48gb'],
+      ['storage-dimensionCapacity', '512gb'],
+    ])
+    const { thisGeneration, earlierGeneration } = secondHandFor(studio, listings)
+
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.listings.map((l) => l.amount)).toEqual([5599])
+    // Storage and memory are let through, so they are reported rather than
+    // claimed -- this is a 96GB/1TB machine, not the 48GB/512GB one priced
+    // beside it.
+    expect(earlierGeneration!.differsOn).toEqual(['memory', 'storage'])
+    expect(earlierGeneration!.matchedOn).not.toContain('storage')
+    expect(earlierGeneration!.exact).toBe(false)
+  })
+
+  /**
+   * Only the build-to-order axes bend. Apple sells the 11-inch and 13-inch
+   * iPad Air as different products at different prices, so a 13-inch unit is
+   * not an earlier 11-inch one however close the rest of it sits.
+   */
+  it('will not cross a product line to find an earlier generation', () => {
+    // The M3s in stock are 11-inch. A 13-inch configuration is a different
+    // product at a different price, so it is offered none of them -- even
+    // though storage and connectivity would have matched.
+    const air = offer('ipad-air', [
+      ['dimensionScreensize', '13inch'],
+      ['dimensionCapacity', '128gb'],
+      ['dimensionConnection', 'wifi'],
+    ])
+    expect(previous(air)).toBeNull()
+  })
+
+  /**
+   * A declared generation dates. Apple never refurbishes a machine newer than
+   * the one it sells, so a newer unit on the shelf is proof the table has been
+   * overtaken — and the shelf wins, rather than the current generation being
+   * labelled the one before.
+   */
+  it('reads a declared generation as a floor, not a fact', () => {
+    // The table declares the iPad Air at M4; the grid holds an M5. Apple does
+    // not refurbish a machine newer than the one it sells, so that unit is
+    // proof the declaration has been overtaken -- and it must be read as the
+    // current one, not offered as the generation before itself.
+    const air = offer('ipad-air', [
+      ['dimensionScreensize', '13inch'],
+      ['dimensionCapacity', '256gb'],
+      ['dimensionConnection', 'wifi'],
+    ])
+
+    expect(current(air)!.listings.map((l) => l.amount)).toEqual([929])
+    expect(previous(air)).toBeNull()
+  })
+
+  /**
+   * Where a family declares how its generation is written, a unit that does
+   * not state one proves nothing. Apple's older iPad Pro tiles name an ordinal
+   * rather than a chip, and reading that silence as agreement is how an M2
+   * machine came to be quoted as "this configuration, used" beside a new M5.
+   */
+  it('will not call a unit current when it states no generation', () => {
+    const pro = offer('ipad-pro', [
+      ['dimensionScreensize', '11inch'],
+      ['dimensionCapacity', '256gb'],
+      ['dimensionConnection', 'wifi'],
+    ])
+
+    expect(current(pro)).toBeNull()
+    // Nor is it offered as the generation before: nothing says it is behind
+    // the M5, only that it is not the M5.
+    expect(previous(pro)).toBeNull()
+  })
+
+  /**
+   * The two silences an empty panel has to tell apart. Apple had no
+   * refurbished Mac mini of any generation the day this was written, while a
+   * Mac Studio with nothing to show sits beside a unit that is merely a
+   * different build — and only the second is worth going looking for.
+   */
+  it('separates having none of a model from having none that answer', () => {
+    expect(refurbStockFor('mac-mini', listings)).toBe(0)
+    expect(refurbStockFor('mac-studio', listings)).toBe(1)
+    expect(refurbStockFor('airpods-4', listings)).toBe(0)
+    // The whole line, not just the current generation: an iPhone 17 has none
+    // of its own in stock and is still not a model Apple never refurbishes.
+    expect(refurbStockFor('iphone-17', listings)).toBeGreaterThan(0)
+  })
+
+  /**
+   * Widening is a fallback, not the rule. Apple has 128GB iPhone 16s, so a
+   * 128GB iPhone 17 gets the build it asked for and a gap worth drawing; a
+   * 256GB one gets the same units with the difference stated, rather than
+   * being told there is nothing.
+   */
+  it('prefers the same build, and widens only when Apple has none of it', () => {
+    const at = (capacity: string) => previous(offer('iphone-17', [['dimensionCapacity', capacity]]))!
+
+    expect(at('128gb').differsOn).toEqual([])
+    expect(at('128gb').matchedOn).toContain('storage')
+
+    expect(at('256gb').differsOn).toEqual(['storage'])
+    expect(at('256gb').matchedOn).not.toContain('storage')
+    // Same units either way — the concession is what is claimed about them.
+    expect(at('256gb').listings.map((l) => l.partNumber)).toEqual(
+      at('128gb').listings.map((l) => l.partNumber),
+    )
+  })
+
+  /**
+   * The heading has to name a real generation. Apple has no 256GB iPhone 16
+   * and does have a 256GB iPhone 15, so matching the build first and picking
+   * the nearest generation afterwards offered the 15 as "the model Apple sold
+   * before this one" — with the 16 sitting beside it on the same shelf.
+   */
+  it('names the generation before, not the nearest one that has your build', () => {
+    const match = previous(offer('iphone-17', [['dimensionCapacity', '256gb']]))!
+
+    expect(new Set(match.listings.map((l) => l.model))).toEqual(new Set(['iphone16']))
+    expect(match.differsOn).toEqual(['storage'])
+  })
+
   /** The same unit can never appear under both headings. */
   it('never returns a unit under both generations', () => {
     const sixteen = offer('iphone-16', [['dimensionCapacity', '128gb']])
@@ -288,19 +424,23 @@ describe('secondHandFor', () => {
   })
 
   /**
-   * A Watch is the quiet case: `watchseries` matches every series Apple has
-   * refurbished and the family id carries no number, so a current-series
-   * configuration is priced from whatever series is in stock. That has to be
-   * reported, and it does not vary — every unit here is the same older series.
+   * A Watch was the quiet case: `watchseries` matches every series Apple has
+   * refurbished and our family id is just `apple-watch`, so a Series 11
+   * configuration was priced from whatever series was in stock and the page
+   * could only warn that it had not checked. The declared generation settles
+   * it — the Series 10 unit is the generation before, and never this one.
    */
-  it('reports an unpinned generation even when every unit shares it', () => {
-    const watch = current(offer('apple-watch', [
-        ['watch_cases-dimensionCaseSize', '46mm'],
-        ['watch_cases-dimensionConnection', 'gps'],
-      ]))!
+  it('does not price a Series 11 from Series 10 stock', () => {
+    const watch = offer('apple-watch', [
+      ['watch_cases-dimensionCaseSize', '42mm'],
+      ['watch_cases-dimensionConnection', 'gpscell'],
+    ])
+    const { thisGeneration, earlierGeneration } = secondHandFor(watch, listings)
 
-    expect(watch.unpinned).toContain('generation')
-    expect(watch.exact).toBe(false)
+    // Apple has no cellular Series 11 in this size; the Series 10 it does have
+    // is offered under its own heading rather than as the current one.
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['watchseries10'])
   })
 
   /**
