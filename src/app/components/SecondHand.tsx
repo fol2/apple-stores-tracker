@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { convertBetween, formatIn, formatLocal } from '../../shared/convert'
 import type { MarketPrice } from '../../shared/convert'
-import { refurbCategoryFor, secondHandFor } from '../../shared/secondhand'
+import { refurbCategoryFor, refurbStockFor, secondHandFor } from '../../shared/secondhand'
 import type { SecondHandMatch } from '../../shared/secondhand'
 import type { FxRates, Offer, RefurbListing } from '../../shared/types'
 
@@ -74,6 +74,7 @@ export function SecondHand({
 
   const category = refurbCategoryFor(familyId)
   const gridFailed = category !== null && failedCategories.includes(category)
+  const inStock = refurbStockFor(familyId, listings)
 
   if (!offer || (!thisGeneration && !earlierGeneration)) {
     return (
@@ -107,17 +108,29 @@ export function SecondHand({
               within the day.
             </p>
           </>
-        ) : (
+        ) : inStock === 0 ? (
           <>
             <p className="mt-6 text-lg">
-              Apple has no refurbished {familyName} matching this configuration today.
+              Apple has no refurbished {familyName} at all today — not this generation, and
+              not the one before it.
             </p>
             <p className="mt-2 max-w-xl text-soft">
               Its refurbished store carries whatever has been returned and restored, so a
-              configuration appears when a unit does and vanishes when it sells. Nor does it
-              have an earlier generation at this specification — Apple discontinues a model
-              the day it announces its replacement, and a returned unit takes months to come
-              back.
+              whole model can be absent for months at a time: Apple discontinues one the day
+              it announces its replacement, and a returned unit takes a while to come back.
+              This is stock, not a gap in what is read here.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="mt-6 text-lg">
+              Apple has no refurbished {familyName} that answers for this configuration today.
+            </p>
+            <p className="mt-2 max-w-xl text-soft">
+              It has {inStock === 1 ? 'one unit' : `${inStock} units`} of the model, but none
+              of them is this generation, and none of the earlier ones can be shown to be a
+              version of what you picked — a different screen size or connectivity is a
+              different product, not a cheaper one.
             </p>
           </>
         )}
@@ -239,8 +252,25 @@ function Generation({ match, against, currency, fx, heading }: GenerationProps) 
           )}
         </div>
 
+        {/* A gap only means something between like machines. Apple's refurbished
+            shelf holds whatever came back, so the earlier generation is often
+            a different build -- and drawing "£2,599 more than new" for a
+            96GB/1TB Mac Studio beside a 48GB/512GB one would read as terrible
+            value rather than as a bigger machine. */}
+        {newPrice !== null && low !== null && match.differsOn.length > 0 && (
+          <p className="mt-7 max-w-2xl leading-relaxed text-soft">
+            This is the model Apple sold before this one, at a different{' '}
+            <span className="text-ink">{match.differsOn.join(' and ')}</span> — its
+            refurbished store carries whatever has been returned and restored, not the
+            build you chose. So there is no like-for-like gap to draw against{' '}
+            {formatIn(newPrice, currency)} new in {against?.market.flag} {against?.market.name}:
+            read it as what the previous generation costs, and take the units below on their
+            own specifications.
+          </p>
+        )}
+
         {/* The gap, drawn to scale against the new price it is measured from. */}
-        {newPrice !== null && low !== null && (
+        {newPrice !== null && low !== null && match.differsOn.length === 0 && (
           <figure className="mt-7">
             <div className="relative h-9 overflow-hidden rounded border border-rule">
               <div

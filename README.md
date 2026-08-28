@@ -119,12 +119,37 @@ A unit is only offered as the earlier generation if it can prove it is behind th
 configuration by Apple's own numbering, either the grid token (`iphone15` against family
 `iphone-17`) or the chip (M4 against M6), so the label is never a guess and the search can
 never reach forward. Only the nearest generation is shown: Apple stocks 15s alongside 16s,
-and listing both under one heading would put two machines behind one price range.
+and listing both under one heading would put two machines behind one price range. That
+generation is chosen before the build is matched, not after — picking it afterwards names
+the nearest generation that happened to stock your build, and offered a 256GB iPhone 15 as
+the model before an iPhone 17 while the 16 sat beside it.
 
-That proof needs a generation on both sides, which iPads and Watches do not have — nothing
-in Apple's catalogue or ours says which generation the *new* iPad Pro is. Those families
-show one block, with each unit's own release year and title, rather than a comparison the
-data cannot support.
+That proof needs a generation on both sides, and half the catalogue has neither: Apple's
+buy page sells no chip dimension for a Watch, an iMac or an iPad Air, and the grid's token
+carries a screen size rather than a generation, so `ipadair_11` reads as generation 11. So
+`REFURB_MODELS` declares both — which generation Apple sells now, and whether a listing
+writes its own in the token (`watchseries11`) or in the chip named by its title. **When
+Apple ships a new Watch series or iPad chip, update `generation.now` for that family.** It
+is read as a floor rather than a fact, so a missed update degrades quietly: Apple never
+refurbishes a machine newer than the one it sells, so a newer unit on the shelf is proof
+the declaration has been overtaken and the shelf wins.
+
+Before this, those families could never show an earlier generation at all, and every unit
+Apple had was shown as the current one — a Series 11 was priced from Series 9 stock, and
+an M3 iPad Air was quoted as the M4 on sale beside it.
+
+Storage and memory are the one concession. Apple's refurbished shelf holds whatever came
+back, so demanding an exact build made the earlier-generation comparison a lottery: one
+Mac Studio was in stock and only the two configurations wanting its 96GB/1TB build could
+see it — 33 of 306 configurations across the catalogue, against 127 now. The same build is
+still preferred and the shelf is only widened when Apple has none of it; when that
+happens the page names the difference and draws no gap bar, because £2,500 more for a
+bigger machine is not a verdict on second-hand value. Screen size, connectivity and case
+size stay strict: a 13-inch iPad Air is not an earlier 11-inch one.
+
+An empty panel says which silence it is. Apple had no refurbished Mac mini of any
+generation the day this shipped, which is a different thing from having units that none of
+your configuration's specifications can be shown to match.
 
 Education prices come from Apple's parallel `/<market>-edu` store. Only one market's
 education price can apply to any one buyer, since you can only be a student in one
