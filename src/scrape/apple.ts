@@ -1,6 +1,10 @@
 import type { DimensionValue, FamilyStructure, Offer } from '../shared/types'
 import { storeUrl, type Market, type Store } from '../shared/markets'
 import { FAMILIES, type Family } from '../shared/families'
+// Lives in shared so the browser can rebuild it without pulling in the scraper.
+import { configKeyOf } from '../shared/offers'
+
+export { configKeyOf }
 
 /**
  * Apple's store pages embed a JS object literal:
@@ -65,12 +69,12 @@ function cleanLabel(header: string | undefined, fallback: string): string {
  * someone comparing a MacBook Pro across fifteen countries is comparing
  * laptops, not chargers, and each would multiply every Mac's matrix again.
  *
- * The iMac's mouse-or-trackpad is the same argument and is deliberately NOT
- * here: it is an existing dimension with existing prices behind it, and
- * dropping it is a product decision rather than a consequence of this fix.
- * Left as it is, so the iMac names an input device and no other family does.
+ * The iMac's mouse-or-trackpad is the same argument and goes with them, which
+ * does drop a dimension the site used to show. Keeping it would have left the
+ * iMac naming an input device that no other family names, and it doubled that
+ * family's matrix on its own.
  */
-const EXCLUDED_DIMENSIONS = /preInstalledSoftware|power_adapter-|keyboard-/
+const EXCLUDED_DIMENSIONS = /preInstalledSoftware|power_adapter-|keyboard-|mouse_and_track_pad-/
 
 /** A configurable option, or a group whose `items` hold the real ones. */
 interface CtoSection {
@@ -386,12 +390,6 @@ export function parseVariantPricing(response: CtoResponse): VariantPricing {
   return { base, partNumber: body?.selectedKits?.btrOrFdPartNumber ?? null, deltas }
 }
 
-/** Stable, market-independent id for a dimension combination. */
-export const configKeyOf = (dimensions: DimensionValue[]): string =>
-  dimensions
-    .map((d) => `${d.field}=${d.value}`)
-    .sort()
-    .join('|')
 
 /**
  * Expand one priced variant into every configuration it can reach.

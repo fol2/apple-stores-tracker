@@ -222,3 +222,32 @@ describe('options nested inside a collapsed group', () => {
     expect(grouped.dimensions.map((d) => d.field)).not.toContain('customizableSpecs')
   })
 })
+
+/**
+ * The boxed accessories, as a class. Apple charges for a 140W brick, for a
+ * keyboard with a numeric keypad and for a trackpad instead of a mouse, and
+ * each is a real price delta on a real selector — but none of them is the
+ * machine, and each multiplies its family's matrix. The iMac carries all
+ * three: the charger and keyboard inside the collapsed group, and the pointing
+ * device as a top-level section that was a dimension until keeping one of the
+ * three became indefensible.
+ */
+describe('accessories priced like hardware', () => {
+  const imac = FAMILIES.find((f) => f.id === 'imac')!
+  const structure = parseFamilyStructure(fixture('apple-uk-imac-select.html'), imac)
+  const fields = structure.dimensions.map((d) => d.field)
+
+  it('leaves the iMac an iMac rather than an iMac and a mouse', () => {
+    expect(fields).not.toContain('mouse_and_track_pad-pointingDeviceType')
+    expect(fields).not.toContain('power_adapter-wattage')
+    expect(fields.some((f) => /^keyboard-/.test(f))).toBe(false)
+  })
+
+  /** Everything that is the machine still has to come through. */
+  it('keeps the specifications that are the machine', () => {
+    expect(fields).toContain('memory-dimensionMemory')
+    expect(fields).toContain('storage-dimensionCapacity')
+    expect(fields).toContain('display-dimensionFinish')
+    expect(fields).toContain('ethernet_adapter-ethernetPortCount')
+  })
+})

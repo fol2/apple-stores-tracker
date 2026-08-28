@@ -1,5 +1,6 @@
 import { CATEGORIES, FAMILIES } from '../shared/families'
 import { MARKETS } from '../shared/markets'
+import { hydrateOffers } from '../shared/offers'
 import type { Offer, Snapshot } from '../shared/types'
 
 /**
@@ -84,6 +85,12 @@ function uniqueConfigurations(offers: Offer[], familyId: string, query?: string)
 function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | null): unknown {
   if (!snapshot) throw new Error('No price data has been collected yet.')
 
+  // The snapshot stores offers without their configKey or source link, so put
+  // those back -- but only for the tools that read a configuration.
+  // `list_catalog` wants a count and should not pay to rebuild the catalogue.
+  let hydrated: Offer[] | null = null
+  const offers = (): Offer[] => (hydrated ??= hydrateOffers(snapshot.offers))
+
   if (name === 'list_catalog') {
     return {
       collectedAt: snapshot.collectedAt,
@@ -98,7 +105,7 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
 
   if (name === 'list_product_configurations') {
     const limit = Math.min(Number(args.limit) || 25, 100)
-    const found = uniqueConfigurations(snapshot.offers, String(args.product_id), args.query)
+    const found = uniqueConfigurations(offers(), String(args.product_id), args.query)
     return {
       productId: args.product_id,
       matched: found.length,
@@ -115,7 +122,7 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
     let configKey = args.configuration_key as string | undefined
 
     if (!configKey) {
-      const candidates = uniqueConfigurations(snapshot.offers, familyId, args.query)
+      const candidates = uniqueConfigurations(offers(), familyId, args.query)
       if (candidates.length === 0) throw new Error('No configuration matched that query.')
       if (candidates.length > 1) {
         return {
@@ -130,7 +137,7 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
       configKey = candidates[0].configKey
     }
 
-    const priced = snapshot.offers.filter((o) => o.familyId === familyId && o.configKey === configKey)
+    const priced = offers().filter((o) => o.familyId === familyId && o.configKey === configKey)
     if (priced.length === 0) throw new Error('No prices found for that configuration.')
 
     const retail = priced.filter((o) => o.store === 'retail')
