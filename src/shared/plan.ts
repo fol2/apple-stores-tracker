@@ -85,17 +85,35 @@ export function planSweep(structures: FamilyStructure[]): SweepStep[] {
       }
 
       const bins: { familyIds: string[]; slices: Record<string, [number, number]>; cost: number }[] = []
+
+      /**
+       * The last step each family was placed in.
+       *
+       * A family's slices must land in strictly increasing steps, because the
+       * step holding its first variants is the one that clears the previous
+       * sweep's results. Plain first-fit does not give that: a small tail slice
+       * fits the spare room in an earlier family's last step, while its own
+       * head still needs a step of its own further along -- so the head ran
+       * second and wiped the tail's offers, on a sweep with nothing wrong with
+       * it. Requiring a later step than the family's previous slice also means
+       * two slices can never share one, which the step's shape relies on.
+       */
+      const placedIn = new Map<string, number>()
+
       for (const part of parts) {
-        // Two slices of one family must not share a step: the step names each
-        // family once, so the second slice would overwrite the first's range.
-        const bin = bins.find(
-          (b) => b.cost + part.cost <= REQUESTS_PER_STEP && !b.familyIds.includes(part.id),
+        const after = placedIn.get(part.id) ?? -1
+        let index = bins.findIndex(
+          (b, i) => i > after && b.cost + part.cost <= REQUESTS_PER_STEP,
         )
-        const target = bin ?? { familyIds: [], slices: {}, cost: 0 }
-        if (!bin) bins.push(target)
+        if (index === -1) {
+          index = bins.length
+          bins.push({ familyIds: [], slices: {}, cost: 0 })
+        }
+        const target = bins[index]
         target.familyIds.push(part.id)
         target.cost += part.cost
         if (part.slice) target.slices[part.id] = part.slice
+        placedIn.set(part.id, index)
       }
 
       for (const bin of bins) {

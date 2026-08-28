@@ -91,6 +91,50 @@ describe('planSweep', () => {
     }
   })
 
+  /**
+   * The step holding a family's first variants is the one that clears the last
+   * sweep's results, so it has to run before the rest. Plain first-fit does not
+   * give that: a small tail slice fits the spare room in an earlier family's
+   * final step, while its own head still needs a step of its own further along.
+   * The head then ran second and wiped the tail's offers — on a sweep with
+   * nothing wrong with it, leaving a family short of builds and reporting
+   * success. It takes two families splitting at once, which the catalogue is
+   * one Apple announcement away from.
+   */
+  it('keeps every family’s slices in increasing step order', () => {
+    const all = structures({ 'macbook-pro': 32, 'macbook-air': 18, 'mac-studio': 12, imac: 6 })
+    for (const market of MARKETS) {
+      for (const store of ['retail', 'education'] as const) {
+        const steps = planSweep(all).filter((s) => s.marketId === market.id && s.store === store)
+        const seen = new Map<string, number>()
+        steps.forEach((step, index) => {
+          for (const id of step.familyIds) {
+            const slice = step.slices?.[id]
+            if (!slice) return
+            const previous = seen.get(id)
+            if (previous !== undefined) {
+              expect(index, `${id} in ${market.id}:${store}`).toBeGreaterThan(previous)
+            }
+            seen.set(id, index)
+          }
+        })
+      }
+    }
+  })
+
+  /** And the earlier step must be the earlier slice, not merely a different one. */
+  it('runs a family’s first variants before its later ones', () => {
+    const all = structures({ 'macbook-pro': 32, 'macbook-air': 18 })
+    for (const id of ['macbook-pro', 'macbook-air']) {
+      const order = planSweep(all)
+        .filter((s) => s.marketId === 'uk' && s.store === 'retail' && s.slices?.[id])
+        .map((s) => s.slices![id][0])
+      expect(order.length).toBeGreaterThan(1)
+      expect(order).toEqual([...order].sort((a, b) => a - b))
+      expect(order[0]).toBe(0)
+    }
+  })
+
   it('covers every market and both stores', () => {
     const steps = planSweep(structures())
     for (const market of MARKETS) {

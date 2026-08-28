@@ -247,7 +247,21 @@ async function stepDiscover(env: Env, budget: RequestBudget): Promise<string> {
 export const familiesReplacedBy = (step: SweepStep): string[] =>
   step.familyIds.filter((id) => (step.slices?.[id]?.[0] ?? 0) === 0)
 
-/** Fold one step's results into the market and store's accumulated slice. */
+/**
+ * Fold one step's results into the market and store's accumulated slice.
+ *
+ * A step that throws outright never reaches here, and `runStep` advances the
+ * cursor anyway rather than wedge the sweep on one bad batch. For a split
+ * family that leaves the pass incomplete in one of two ways: a lost middle
+ * slice is a family short of builds, and a lost first slice leaves last
+ * sweep's prices for the variants it covered sitting beside this sweep's for
+ * the rest.
+ *
+ * Both are accepted here, as the same trade-off the cursor already makes.
+ * Neither is new in kind -- before families were split, a thrown step left the
+ * whole family behind -- and the fix for either is to stop skipping failed
+ * steps, which is a change to the sweep, not to this fold.
+ */
 export function foldStep(
   existing: Pick<MarketCollection, 'offers' | 'errors'> | null,
   collection: Pick<MarketCollection, 'offers' | 'errors'>,
