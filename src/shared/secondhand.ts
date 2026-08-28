@@ -309,7 +309,16 @@ function search(
     )
   }
 
-  /** How far back a unit is, by whichever signal proved it earlier. */
+  /**
+   * How far back a unit is, by whichever signal proved it earlier.
+   *
+   * `isEarlier` gates entry on one of these two, so a unit reaching the
+   * narrowing below always has a rank. The two are only ever compared within
+   * one family, and no family in `REFURB_MODELS` mixes them — iPhone tokens
+   * all carry a number and no iPhone title names a chip, Mac tokens carry
+   * none and every Mac title names one. A family that mixed them would be
+   * comparing a model number against a chip number, so keep them separate.
+   */
   const generationRank = (listing: RefurbListing): number | undefined =>
     generationIn(listing.model) ?? chipGeneration(processorInTitle(listing.title).chip)
 

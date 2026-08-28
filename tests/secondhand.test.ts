@@ -233,8 +233,26 @@ describe('secondHandFor', () => {
 
     expect(thisGeneration).toBeNull()
     expect(earlierGeneration!.basis).toBe('earlier-generation')
-    expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['iphone16', 'iphone16'])
     expect(earlierGeneration!.exact).toBe(false)
+  })
+
+  /**
+   * "The generation before" is the one immediately before, not everything
+   * older. Two generations sit behind an iPhone 17 in the grid — 16s and a 15 —
+   * and returning both would put two different machines behind one price range.
+   *
+   * Stated as its own case because the coverage was previously incidental to
+   * the test above, where a fixture tidy-up could have removed it silently.
+   */
+  it('narrows to the nearest generation when several are older', () => {
+    const models = (familyId: string) =>
+      secondHandFor(offer(familyId, [['dimensionCapacity', '128gb']]), listings)
+        .earlierGeneration!.listings.map((l) => l.model)
+
+    // Everything older than an iPhone 17 is in stock; only the 16s come back.
+    expect(new Set(models('iphone-17'))).toEqual(new Set(['iphone16']))
+    // And one step down the same ladder returns the 15, not nothing.
+    expect(new Set(models('iphone-16'))).toEqual(new Set(['iphone15']))
   })
 
   /** It must never reach forward, only back. */
