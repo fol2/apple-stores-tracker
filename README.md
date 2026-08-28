@@ -93,6 +93,12 @@ ninety batches for a price sweep.
 Only the UK is collected. A refurbished unit is one physical machine in one warehouse, so
 unlike a list price it does not generalise across markets.
 
+It is also the only second-hand source here. CeX, Back Market, musicMagpie, Amazon Renewed
+and CamelCamelCamel were each probed and each either blocks automated clients or disallows
+the paths its own site calls; eBay publishes an API for it and wants a registered key.
+`docs/second-hand-sources.md` records what was found, so the question does not have to be
+re-derived.
+
 The comparison is the delicate part, because the grid's facets and our configuration
 dimensions overlap without either containing the other. A match pins every facet both
 sides name, then checks the processor against the listing's own title — the facets do not
