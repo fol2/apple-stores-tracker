@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { expandVariant, parseFamilyStructure, parseVariantPricing } from '../src/scrape/apple'
+import {
+  expandVariant,
+  parseCatalogOffers,
+  parseFamilyStructure,
+  parseVariantPricing,
+} from '../src/scrape/apple'
 import { hydrateOffers, packOffers, type StoredOffer } from '../src/shared/offers'
 import { FAMILIES } from '../src/shared/families'
 import { marketById } from '../src/shared/markets'
@@ -61,5 +66,34 @@ describe('what the snapshot stores', () => {
     const [back] = hydrateOffers([orphan])
     expect(back.sourceUrl).toBe('')
     expect(back.configKey).toBe(hydrateOffers(packOffers(offers))[0].configKey)
+  })
+})
+
+/**
+ * The other half of the catalogue, and the larger one. A Mac is built through
+ * Apple's configurator; every iPhone, iPad and Watch is a list of stocked SKUs
+ * read by `parseCatalogOffers`, which builds its own `sourceUrl`. If the two
+ * paths ever disagree about how that string is made, deriving it would orphan
+ * the price history for most of the site rather than a corner of it.
+ */
+describe('what the snapshot stores, for a catalogue family', () => {
+  const iphone = FAMILIES.find((f) => f.id === 'iphone-17')!
+  const offers: Offer[] = parseCatalogOffers(
+    fixture('apple-uk-iphone-17-select.html'),
+    uk,
+    iphone,
+    'retail',
+  )
+
+  it('reads the stocked builds and collapses the colours', () => {
+    // Ten SKUs are two builds in five finishes, and the finish costs nothing.
+    expect(offers.map((o) => o.configKey)).toEqual([
+      'dimensionCapacity=256gb',
+      'dimensionCapacity=512gb',
+    ])
+  })
+
+  it('comes back byte-identical to what the scraper produced', () => {
+    expect(hydrateOffers(packOffers(offers))).toEqual(offers)
   })
 })
