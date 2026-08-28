@@ -5,6 +5,7 @@ import {
   ctoUrl,
   expandVariant,
   extractJsonAfter,
+  isExcludedDimension,
   parseFamilyStructure,
   parseVariantPricing,
 } from '../src/scrape/apple'
@@ -249,5 +250,30 @@ describe('accessories priced like hardware', () => {
     expect(fields).toContain('storage-dimensionCapacity')
     expect(fields).toContain('display-dimensionFinish')
     expect(fields).toContain('ethernet_adapter-ethernetPortCount')
+  })
+})
+
+/**
+ * Anchoring the exclusion rule as a whole would be wrong, and quietly so.
+ * Apple names the accessory fields `power_adapter-wattage` but the software
+ * ones `software_final-preInstalledSoftware` — a prefix and a suffix — so one
+ * `^` across the alternation stops excluding bundled software and quadruples
+ * every Mac's matrix with app licences.
+ */
+describe('the exclusion rule matches where Apple actually puts the name', () => {
+  const cases: [string, boolean][] = [
+    ['software_final-preInstalledSoftware', true],
+    ['software_proappbundle-preInstalledSoftware', true],
+    ['power_adapter-wattage', true],
+    ['keyboard-keyboardFormFactor', true],
+    ['mouse_and_track_pad-pointingDeviceType', true],
+    ['memory-dimensionMemory', false],
+    ['storage-dimensionCapacity', false],
+    ['display-dimensionFinish', false],
+    ['ethernet_adapter-ethernetPortCount', false],
+  ]
+
+  it.each(cases)('%s excluded: %s', (field, excluded) => {
+    expect(isExcludedDimension(field)).toBe(excluded)
   })
 })

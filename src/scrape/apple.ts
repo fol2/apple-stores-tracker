@@ -74,7 +74,13 @@ function cleanLabel(header: string | undefined, fallback: string): string {
  * iMac naming an input device that no other family names, and it doubled that
  * family's matrix on its own.
  */
-const EXCLUDED_DIMENSIONS = /preInstalledSoftware|power_adapter-|keyboard-|mouse_and_track_pad-/
+// Anchored per alternative rather than as a whole: Apple names the software
+// fields `software_final-preInstalledSoftware`, so that one matches at the end
+// while the accessories match at the start. Anchoring the lot with one `^`
+// would quietly let Logic Pro and Final Cut Pro back in as dimensions.
+const EXCLUDED_DIMENSIONS = /preInstalledSoftware$|^power_adapter-|^keyboard-|^mouse_and_track_pad-/
+
+export const isExcludedDimension = (field: string): boolean => EXCLUDED_DIMENSIONS.test(field)
 
 /** A configurable option, or a group whose `items` hold the real ones. */
 interface CtoSection {

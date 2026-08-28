@@ -88,8 +88,12 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
   // The snapshot stores offers without their configKey or source link, so put
   // those back -- but only for the tools that read a configuration.
   // `list_catalog` wants a count and should not pay to rebuild the catalogue.
+  // A snapshot written before education prices existed has no `store`, and the
+  // configuration tools filter on it being `retail` — so default it here, the
+  // way the browser does at its own boundary.
   let hydrated: Offer[] | null = null
-  const offers = (): Offer[] => (hydrated ??= hydrateOffers(snapshot.offers))
+  const offers = (): Offer[] =>
+    (hydrated ??= hydrateOffers(snapshot.offers.map((o) => ({ ...o, store: o.store ?? 'retail' }))))
 
   if (name === 'list_catalog') {
     return {
