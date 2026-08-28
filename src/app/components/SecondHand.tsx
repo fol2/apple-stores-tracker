@@ -126,11 +126,18 @@ export function SecondHand({
             <p className="mt-6 text-lg">
               Apple has no refurbished {familyName} that answers for this configuration today.
             </p>
+            {/* Which of these it was is not established here, so neither is
+                claimed. A unit can fail on specification, and it can equally
+                fail because its listing never says which generation it is --
+                twenty of Apple's 11-inch iPad Pro tiles name an ordinal rather
+                than a chip, and one of those can match a build exactly and
+                still prove nothing. */}
             <p className="mt-2 max-w-xl text-soft">
               It has {inStock === 1 ? 'one unit' : `${inStock} units`} of the model, but none
-              of them is this generation, and none of the earlier ones can be shown to be a
-              version of what you picked — a different screen size or connectivity is a
-              different product, not a cheaper one.
+              that can be shown to be this configuration or an earlier generation of it —
+              either on specification, where a different screen size or connectivity is a
+              different product rather than a cheaper one, or because the listing does not
+              say which generation the unit is.
             </p>
           </>
         )}
