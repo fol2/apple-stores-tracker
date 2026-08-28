@@ -179,3 +179,46 @@ describe('ctoUrl', () => {
     )
   })
 })
+
+/**
+ * Apple ships a configurable option in one of two places, and only one of them
+ * was being read. The Mac mini lists memory and storage as top-level
+ * `STANDALONE` sections; every laptop and the iMac nest the same two inside a
+ * collapsed `customizableSpecs` group that carries no values of its own. So a
+ * MacBook Pro had no memory or storage at all — one offer per chip, at
+ * whatever build Apple happened to preconfigure, and no way to price the 48GB
+ * machine you were actually shopping for.
+ */
+describe('options nested inside a collapsed group', () => {
+  const page = fixture('apple-uk-macbook-pro-select.html')
+  const macBookPro = FAMILIES.find((f) => f.id === 'macbook-pro')!
+  const grouped = parseFamilyStructure(page, macBookPro)
+
+  it('reads memory and storage out of the group', () => {
+    const fields = grouped.dimensions.map((d) => d.field)
+    expect(fields).toContain('memory-dimensionMemory')
+    expect(fields).toContain('storage-dimensionCapacity')
+  })
+
+  it('names them the way Apple does', () => {
+    const memory = grouped.dimensions.find((d) => d.field === 'memory-dimensionMemory')!
+    expect(memory.values.map((v) => v.value)).toContain('48gb')
+    expect(memory.values.find((v) => v.value === '48gb')!.label).toMatch(/48\s*GB/i)
+  })
+
+  /**
+   * The group also holds the charger and the keyboard. Both carry a real price
+   * delta, and neither is the machine — including them would multiply every
+   * Mac's matrix twice over to compare bricks and key layouts.
+   */
+  it('leaves the boxed accessories out', () => {
+    const fields = grouped.dimensions.map((d) => d.field)
+    expect(fields).not.toContain('power_adapter-wattage')
+    expect(fields.some((f) => /keyboard-/.test(f))).toBe(false)
+  })
+
+  /** The group itself is not an option; only its contents are. */
+  it('does not offer the group as a dimension of its own', () => {
+    expect(grouped.dimensions.map((d) => d.field)).not.toContain('customizableSpecs')
+  })
+})

@@ -56,16 +56,35 @@ function cleanLabel(header: string | undefined, fallback: string): string {
 }
 
 /**
- * Bundled software (Logic Pro, Final Cut Pro) is priced like a hardware option
- * but is not one: including it quadruples every Mac's matrix while comparing
- * app licences rather than machines.
+ * Options priced like a hardware choice that are not the machine.
+ *
+ * Bundled software (Logic Pro, Final Cut Pro) quadruples every Mac's matrix
+ * while comparing app licences. The power adapter and the keyboard arrived
+ * with the grouped sections below and are the same shape of thing: Apple
+ * charges for a 140W brick and for a keyboard with a numeric keypad, but
+ * someone comparing a MacBook Pro across fifteen countries is comparing
+ * laptops, not chargers, and each would multiply every Mac's matrix again.
+ *
+ * The iMac's mouse-or-trackpad is the same argument and is deliberately NOT
+ * here: it is an existing dimension with existing prices behind it, and
+ * dropping it is a product decision rather than a consequence of this fix.
+ * Left as it is, so the iMac names an input device and no other family does.
  */
-const EXCLUDED_DIMENSIONS = /preInstalledSoftware/
+const EXCLUDED_DIMENSIONS = /preInstalledSoftware|power_adapter-|keyboard-/
+
+/** A configurable option, or a group whose `items` hold the real ones. */
+interface CtoSection {
+  formFieldName: string
+  header?: string
+  selectorLabel?: string
+  priceDelta?: boolean
+  items?: CtoSection[]
+}
 
 interface CtoSelectionData {
   products: { btrOrFdPartNumber: string | null; priceKey: string; dimensions: Record<string, string> }[]
   mainSections: { formFieldName: string; header?: string; selectorLabel?: string }[]
-  configSections: { formFieldName: string; header?: string; selectorLabel?: string; priceDelta?: boolean }[]
+  configSections: CtoSection[]
   mainDisplayValues: Record<string, any>
   configDisplayValues: Record<string, any>
 }
@@ -133,7 +152,17 @@ function parseCtoStructure(html: string, family: Family, data: CtoSelectionData)
     })),
   )
 
-  const dimensions = data.configSections
+  // Apple ships an option either at the top level or one deep inside a group.
+  // The Mac mini and Mac Studio list memory and storage directly; every laptop
+  // and the iMac put the same two sections inside a collapsed
+  // `customizableSpecs` group, which carries no values of its own. Reading only
+  // the top level dropped storage and memory for every family that groups them,
+  // so a MacBook Pro was priced at its base build with no way to choose either.
+  const sections = data.configSections.flatMap((section) =>
+    section.items && section.items.length > 0 ? section.items : [section],
+  )
+
+  const dimensions = sections
     .filter((section) => section.priceDelta && !EXCLUDED_DIMENSIONS.test(section.formFieldName))
     .flatMap((section) => {
       const values = data.configDisplayValues[section.formFieldName]
