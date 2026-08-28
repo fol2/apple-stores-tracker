@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseRefurbGrid } from '../src/scrape/refurb'
-import { matchRefurb, processorInTitle, processorOf, refurbCategoryFor } from '../src/shared/secondhand'
+import {
+  processorInTitle,
+  processorOf,
+  refurbCategoryFor,
+  secondHandFor,
+} from '../src/shared/secondhand'
 import type { DimensionValue, Offer } from '../src/shared/types'
 
 const html = readFileSync(new URL('./fixtures/apple-uk-refurb.html', import.meta.url), 'utf8')
@@ -21,7 +26,7 @@ const offer = (familyId: string, dimensions: [string, string][]): Offer => ({
 
 describe('parseRefurbGrid', () => {
   it('reads every unit Apple has, from one page', () => {
-    expect(listings).toHaveLength(16)
+    expect(listings).toHaveLength(17)
     expect(listings[0]).toMatchObject({ partNumber: 'G1MLBB/A', amount: 2669, currency: 'GBP' })
   })
 
@@ -75,7 +80,11 @@ describe('processor identity', () => {
   })
 })
 
-describe('matchRefurb', () => {
+/** The two questions the page asks, named for readability below. */
+const current = (o: Offer) => secondHandFor(o, listings).thisGeneration
+const previous = (o: Offer) => secondHandFor(o, listings).earlierGeneration
+
+describe('secondHandFor', () => {
   /**
    * The one shape that can be like-for-like. Apple's iPhone grid puts the
    * generation in the model token itself and carries no release-year facet, so
@@ -84,7 +93,7 @@ describe('matchRefurb', () => {
    */
   it('calls a match exact when the configuration pins every spec the units carry', () => {
     const phone = offer('iphone-16', [['dimensionCapacity', '128gb']])
-    const match = matchRefurb(phone, listings)!
+    const match = current(phone)!
 
     expect(match.listings).toHaveLength(2)
     expect([match.low, match.high]).toEqual([589, 589])
@@ -104,7 +113,7 @@ describe('matchRefurb', () => {
       ['dimensionCapacity', '128gb'],
       ['dimensionConnection', 'wifi'],
     ])
-    const match = matchRefurb(air, listings)!
+    const match = current(air)!
 
     expect(match.listings).toHaveLength(2)
     expect(match.exact).toBe(false)
@@ -122,7 +131,7 @@ describe('matchRefurb', () => {
       ['chassis-dimensionScreensize', '13inch'],
       ['processor-cpuCoreCount-gpuCoreCount', '10-10'],
     ])
-    const match = matchRefurb(air, listings)!
+    const match = current(air)!
 
     expect(match.exact).toBe(false)
     expect(match.unpinned).toEqual(['storage', 'release year', 'memory'])
@@ -133,13 +142,10 @@ describe('matchRefurb', () => {
   /** An M5 Pro 15/16 and an M5 Pro 18/20 are not the same machine. */
   it('separates chip tiers the grid facets cannot tell apart', () => {
     const pro = (cores: string) =>
-      matchRefurb(
-        offer('macbook-pro', [
+      current(offer('macbook-pro', [
           ['chassis-dimensionScreensize', '14inch'],
           ['processor-dimensionChip-cpuCoreCount-gpuCoreCount', cores],
-        ]),
-        listings,
-      )!
+        ]))!
 
     expect(pro('m5pro-15-16').listings.map((l) => l.amount)).toEqual([2669])
     expect(pro('m5pro-18-20').listings.map((l) => l.amount)).toEqual([2849])
@@ -151,11 +157,11 @@ describe('matchRefurb', () => {
       ['memory-dimensionMemory', '16gb'],
       ['storage-dimensionCapacity', '256gb'],
     ])
-    expect(matchRefurb(mini, listings)).toBeNull()
+    expect(current(mini)).toBeNull()
   })
 
   it('has nothing to say about a family Apple does not refurbish', () => {
-    expect(matchRefurb(offer('airpods-4', []), listings)).toBeNull()
+    expect(current(offer('airpods-4', []))).toBeNull()
     expect(refurbCategoryFor('airpods-4')).toBeNull()
     expect(refurbCategoryFor('macbook-pro')).toBe('mac')
   })
@@ -168,7 +174,7 @@ describe('matchRefurb', () => {
    */
   it('will not call a match exact when the unit carries nothing to check', () => {
     const tv = offer('apple-tv-4k', [['dimensionConnection', 'wifiethernettv128gb']])
-    const match = matchRefurb(tv, listings)!
+    const match = current(tv)!
 
     expect(match.listings).toHaveLength(1)
     expect(match.exact).toBe(false)
@@ -187,13 +193,10 @@ describe('matchRefurb', () => {
    */
   it('matches a watch on case size and connection', () => {
     const watch = (size: string, connection: string) =>
-      matchRefurb(
-        offer('apple-watch', [
+      current(offer('apple-watch', [
           ['watch_cases-dimensionCaseSize', size],
           ['watch_cases-dimensionConnection', connection],
-        ]),
-        listings,
-      )
+        ]))
 
     expect(watch('46mm', 'gps')!.listings.map((l) => l.amount)).toEqual([339])
     expect(watch('42mm', 'gps')!.listings.map((l) => l.amount)).toEqual([309])
@@ -203,13 +206,10 @@ describe('matchRefurb', () => {
 
   /** `watchse` is a prefix of `watchseries`, so the SE needs its digit. */
   it('keeps the Watch SE and the Watch Series apart', () => {
-    const se = matchRefurb(
-      offer('apple-watch-se', [
+    const se = current(offer('apple-watch-se', [
         ['watch_cases-dimensionCaseSize', '44mm'],
         ['watch_cases-dimensionConnection', 'gps'],
-      ]),
-      listings,
-    )!
+      ]))!
     expect(se.listings.map((l) => l.model)).toEqual(['watchse3'])
     // Aluminium or titanium changes the price and our configurations do not
     // say which, so a watch is never quoted as the same machine.
@@ -223,28 +223,68 @@ describe('matchRefurb', () => {
    * sale. An earlier generation at the same specification is the useful answer
    * — provided the page says that is what it is.
    */
-  it('falls back to an earlier generation, and says so', () => {
+  /**
+   * A machine on sale now has barely been resold, so the model it replaced is
+   * usually the only one that exists used. Apple has no refurbished iPhone 17.
+   */
+  it('offers the generation before, and says which it is', () => {
     const seventeen = offer('iphone-17', [['dimensionCapacity', '128gb']])
-    const match = matchRefurb(seventeen, listings)!
+    const { thisGeneration, earlierGeneration } = secondHandFor(seventeen, listings)
 
-    expect(match.basis).toBe('earlier-generation')
-    expect(match.listings.map((l) => l.model)).toEqual(['iphone16', 'iphone16'])
-    expect(match.exact).toBe(false)
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.basis).toBe('earlier-generation')
+    expect(earlierGeneration!.exact).toBe(false)
   })
 
-  /** The fallback must never reach forward, only back. */
+  /**
+   * "The generation before" is the one immediately before, not everything
+   * older. Two generations sit behind an iPhone 17 in the grid — 16s and a 15 —
+   * and returning both would put two different machines behind one price range.
+   *
+   * Stated as its own case because the coverage was previously incidental to
+   * the test above, where a fixture tidy-up could have removed it silently.
+   */
+  it('narrows to the nearest generation when several are older', () => {
+    const models = (familyId: string) =>
+      secondHandFor(offer(familyId, [['dimensionCapacity', '128gb']]), listings)
+        .earlierGeneration!.listings.map((l) => l.model)
+
+    // Everything older than an iPhone 17 is in stock; only the 16s come back.
+    expect(new Set(models('iphone-17'))).toEqual(new Set(['iphone16']))
+    // And one step down the same ladder returns the 15, not nothing.
+    expect(new Set(models('iphone-16'))).toEqual(new Set(['iphone15']))
+  })
+
+  /** It must never reach forward, only back. */
   it('will not offer a later generation as the earlier one', () => {
     const fifteen = offer('iphone-15', [['dimensionCapacity', '128gb']])
-    expect(matchRefurb(fifteen, listings)).toBeNull()
+    expect(secondHandFor(fifteen, listings)).toEqual({
+      thisGeneration: null,
+      earlierGeneration: null,
+    })
   })
 
-  /** Current stock always wins; the fallback is only for an empty shelf. */
-  it('prefers this generation when Apple has it', () => {
+  /**
+   * Both answers at once, which is the point of asking them separately: this
+   * model used, and last year's used, so the reader can weigh one against the
+   * other rather than being handed whichever happened to be in stock.
+   */
+  it('answers both questions when Apple has both', () => {
     const sixteen = offer('iphone-16', [['dimensionCapacity', '128gb']])
-    const match = matchRefurb(sixteen, listings)!
+    const { thisGeneration, earlierGeneration } = secondHandFor(sixteen, listings)
 
-    expect(match.basis).toBe('this-generation')
-    expect(match.exact).toBe(true)
+    expect(thisGeneration!.basis).toBe('this-generation')
+    expect(thisGeneration!.exact).toBe(true)
+    expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['iphone15'])
+  })
+
+  /** The same unit can never appear under both headings. */
+  it('never returns a unit under both generations', () => {
+    const sixteen = offer('iphone-16', [['dimensionCapacity', '128gb']])
+    const { thisGeneration, earlierGeneration } = secondHandFor(sixteen, listings)
+    const here = new Set(thisGeneration!.listings.map((l) => l.partNumber))
+
+    expect(earlierGeneration!.listings.some((l) => here.has(l.partNumber))).toBe(false)
   })
 
   /**
@@ -254,13 +294,10 @@ describe('matchRefurb', () => {
    * reported, and it does not vary — every unit here is the same older series.
    */
   it('reports an unpinned generation even when every unit shares it', () => {
-    const watch = matchRefurb(
-      offer('apple-watch', [
+    const watch = current(offer('apple-watch', [
         ['watch_cases-dimensionCaseSize', '46mm'],
         ['watch_cases-dimensionConnection', 'gps'],
-      ]),
-      listings,
-    )!
+      ]))!
 
     expect(watch.unpinned).toContain('generation')
     expect(watch.exact).toBe(false)
@@ -282,7 +319,7 @@ describe('matchRefurb', () => {
       ['dimensionCapacity', '64gb'],
       ['dimensionConnection', 'wifi'],
     ])
-    const match = matchRefurb(base, listings)!
+    const match = current(base)!
 
     expect(match.listings).toHaveLength(2)
     expect(match.exact).toBe(false)
@@ -298,13 +335,13 @@ describe('matchRefurb', () => {
       ['chassis-dimensionScreensize', '13inch'],
       ['processor-cpuCoreCount-gpuCoreCount', '10-10'],
     ])
-    expect(matchRefurb(air, listings)!.exact).toBe(false)
+    expect(current(air)!.exact).toBe(false)
   })
 
   /** Colour never moves the new price, so it must not hide a cheaper unit. */
   it('ignores colour, and says that the units vary by it', () => {
     const imac = offer('imac', [['chassis-dimensionColor', 'orange'], ['processor-cpuCoreCount-gpuCoreCount', '8-8']])
-    const match = matchRefurb(imac, listings)!
+    const match = current(imac)!
 
     expect(match.listings).toHaveLength(2)
     expect(match.varyingOn).toContain('colour')

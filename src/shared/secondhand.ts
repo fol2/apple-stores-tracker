@@ -242,15 +242,34 @@ export interface SecondHandMatch {
  * listing's own title, and then reports what it matched on, what the matches
  * still vary by, and whether the result is the same machine at all.
  */
-export function matchRefurb(offer: Offer, listings: RefurbListing[]): SecondHandMatch | null {
-  const family = REFURB_MODELS[offer.familyId]
-  if (!family) return null
+export interface SecondHandComparison {
+  /** Units of the machine being priced. */
+  thisGeneration: SecondHandMatch | null
+  /** Units of the model it replaced, where that can be proved. */
+  earlierGeneration: SecondHandMatch | null
+}
 
-  return (
-    search(offer, listings, family.model, true, family.generationInToken === true) ??
-    // The fallback deliberately spans generations, so its token never pins one.
-    search(offer, listings, family.lineage ?? family.model, false, false)
-  )
+/**
+ * Both answers a second-hand buyer actually weighs.
+ *
+ * These are two questions, not one with a fallback. A machine on sale now has
+ * barely been resold — the units that exist are of the model it replaced — so
+ * "what did last year's cost" is the useful answer far more often than "what
+ * does this one cost used", and it stays useful when both exist.
+ *
+ * The two searches cannot return the same unit: the first requires the
+ * processor to agree, the second requires the unit to be provably behind the
+ * configuration, and nothing satisfies both.
+ */
+export function secondHandFor(offer: Offer, listings: RefurbListing[]): SecondHandComparison {
+  const family = REFURB_MODELS[offer.familyId]
+  if (!family) return { thisGeneration: null, earlierGeneration: null }
+
+  return {
+    thisGeneration: search(offer, listings, family.model, true, family.generationInToken === true),
+    // A search across generations never pins one, whatever its token looks like.
+    earlierGeneration: search(offer, listings, family.lineage ?? family.model, false, false),
+  }
 }
 
 /**
@@ -290,7 +309,20 @@ function search(
     )
   }
 
-  const matches = listings.filter((listing) => {
+  /**
+   * How far back a unit is, by whichever signal proved it earlier.
+   *
+   * `isEarlier` gates entry on one of these two, so a unit reaching the
+   * narrowing below always has a rank. The two are only ever compared within
+   * one family, and no family in `REFURB_MODELS` mixes them — iPhone tokens
+   * all carry a number and no iPhone title names a chip, Mac tokens carry
+   * none and every Mac title names one. A family that mixed them would be
+   * comparing a model number against a chip number, so keep them separate.
+   */
+  const generationRank = (listing: RefurbListing): number | undefined =>
+    generationIn(listing.model) ?? chipGeneration(processorInTitle(listing.title).chip)
+
+  let matches = listings.filter((listing) => {
     if (!model.test(listing.model)) return false
     if (!sameChip && !isEarlier(listing)) return false
     for (const spec of wanted) {
@@ -303,6 +335,14 @@ function search(
   })
 
   if (matches.length === 0) return null
+
+  // "The generation before" means the one immediately before. Apple still sells
+  // refurbished iPhone 15s alongside 16s, and listing both under one heading
+  // would put two different machines behind a single price range.
+  if (!sameChip) {
+    const nearest = Math.max(...matches.map((l) => generationRank(l) ?? -Infinity))
+    matches = matches.filter((l) => generationRank(l) === nearest)
+  }
 
   const sorted = [...matches].sort((a, b) => a.amount - b.amount)
   const facetsCarried = [...new Set(matches.flatMap((l) => Object.keys(l.dimensions)))]
