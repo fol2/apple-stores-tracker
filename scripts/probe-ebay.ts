@@ -21,9 +21,19 @@ const clientId = process.env.EBAY_CLIENT_ID
 const clientSecret = process.env.EBAY_CLIENT_SECRET
 if (!clientId || !clientSecret) throw new Error('EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be set')
 
-// A Production App ID carries PRD; Sandbox carries SBX and lists nothing real,
-// which would be indistinguishable from "nobody is selling this".
-if (clientId.includes('SBX')) throw new Error('this is a Sandbox key; the probe needs Production')
+/**
+ * An App ID names its environment in its own segment --
+ * `Name-app-PRD-1a2b3c4d5-6e7f8g9h`, or `-SBX-` for Sandbox. Matched on the
+ * delimited segment rather than anywhere in the string, so a Production key
+ * whose trailing hash happens to contain those three letters is not rejected.
+ *
+ * Worth checking at all because Sandbox lists nothing real, and an empty
+ * result is indistinguishable from "nobody is selling this" -- a wrong answer
+ * that looks like a finding.
+ */
+if (clientId.includes('-SBX-')) {
+  throw new Error('this is a Sandbox key (-SBX-); the probe needs the Production keyset')
+}
 
 const query = process.argv[2] ?? 'Apple MacBook Pro M4'
 const token = await applicationToken(clientId, clientSecret)
