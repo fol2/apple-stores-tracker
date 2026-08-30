@@ -14,13 +14,21 @@
  * Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packOffers } from '../src/shared/offers'
 import { changedPoints, type PricePoint } from '../src/shared/diff'
 import { historyStatements, ROWS_PER_FILE } from '../src/shared/history-sql'
 import type { StoredOffer } from '../src/shared/offers'
+
+/**
+ * Credentials come from the environment and are never read by anything that
+ * prints. On a runner the Action supplies them; on a laptop a gitignored
+ * `.env` does -- see `.env.example`. Node loads it natively, so there is no
+ * dotenv here to go stale.
+ */
+if (existsSync('.env')) process.loadEnvFile('.env')
 
 const local = JSON.parse(readFileSync('data/snapshot.json', 'utf8'))
 const scratch = mkdtempSync(join(tmpdir(), 'publish-'))
