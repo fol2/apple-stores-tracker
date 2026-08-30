@@ -41,44 +41,51 @@ across all workers when Apple answers a burst with HTTP 541.
 
 ## How it runs
 
-One Cloudflare Worker serves the site, the API and the MCP endpoint, and does its
-collecting from a cron trigger. The work is layered, because the things it needs to keep
-current move at completely different speeds.
+One Cloudflare Worker serves the site, the API and the MCP endpoint. It reads; it does not
+collect. A GitHub Action walks Apple's stores once a day and publishes the result.
 
 ```
-cron (*/3) ─► whichever tier is most overdue
-  │
-  ├─ 1. continue a sweep   in progress?      one planned batch
-  ├─ 2. full sweep         > 7 days old?     ~90 batches, ~4.6 hours
-  ├─ 3. refurbished stock  > 1 day old?      6 requests, one tick
-  ├─ 4. probe              > 2 hours old?    one rotating slice, ~15 requests
-  └─    otherwise idle
+GitHub Action (daily) ─► collect 15 markets x 2 stores  (~1,245 requests)
+                         collect refurbished stock      (6 requests)
+                         publish ─► KV  snapshot, rates, refurbished listings
+                                    D1  the prices that changed
+
+Worker (per request)  ─► KV + D1, edge-cached
 ```
 
-**Prices** cost ~1,245 requests to read in full but change a handful of times a year, so
-scanning on a timer would spend that budget over and over to learn that nothing happened.
-Ahead of it sits the **probe**: it re-reads one rotating slice and compares it with the
-stored snapshot. Apple moves many prices at once when it moves any, so a slice is enough
-to notice, and a full sweep only runs when there is something to find. A forced weekly
-sweep is the backstop, since comparing prices cannot reveal a product Apple has only just
-added.
+Collection used to run on the Worker's own cron, in tiers, a batch at a time. It never
+once completed a pass. Parsing a store page costs about **1.8ms of cold CPU** — measured
+end to end through the real parsers on live pages, not fixtures — so a full sweep of
+~2,750 page reads needs roughly **five CPU-seconds**. A free plan's scheduled worker gets
+10ms per invocation, which across 480 invocations a day is **4.8 CPU-seconds**, and only
+if every one is packed exactly to the ceiling. Packed that tightly they are killed
+mid-step, and a killed invocation never reaches the line that advances the cursor, so the
+sweep retries the same step forever.
 
-Steady state is roughly 200 requests a day rather than 2,500.
+The gap is in total daily budget, not in any one inefficiency, so no amount of tuning
+closes it. A runner has no such ceiling: the same scraper, unchanged, walks everything in
+one pass of a few minutes. `scripts/collect.ts` and `scripts/publish.ts` are what the
+Action runs, and what you run by hand.
 
-**Rates** are not on the cron at all. The feed publishes when its next quote is due, so
-the Worker re-reads it on the request path the first time someone asks after that moment,
-serving the quote it already holds and replacing it behind the response. Reading a daily
-feed from an hourly timer spent twenty-three requests a day to learn nothing and still
-left a new quote unseen for up to an hour; this costs nothing while nobody is looking and
-picks the new one up within minutes.
+The cold cost is worth understanding, because it is not uniform. Native V8 primitives
+barely notice a cold isolate — `indexOf` goes 0.09ms cold to 0.07ms warm, `JSON.parse`
+0.37 to 0.07. A hand-written character loop goes **5.03ms cold to 0.09ms warm**, because it
+starts in the interpreter and only tiers up after thousands of iterations. A short-lived
+isolate that parses six pages and exits pays interpreter prices for its whole life. This is
+also why the *read* path is fine on the same plan: serving the snapshot is KV's native JSON
+decode and `JSON.stringify`, with almost no interpreted JavaScript between them.
 
-A sweep is split into ~90 planned batches, each sized to fit one invocation's subrequest
-allowance, so a failed batch is a cheap retry rather than a lost pass. `GET /api/status`
-reports where each tier has got to.
+**Rates** are not collected on a timer either. The feed publishes when its next quote is
+due, so the Worker re-reads it on the request path the first time someone asks after that
+moment, serving the quote it already holds and replacing it behind the response.
 
-**KV** holds the snapshot — one blob, read on every request, cached at the edge.
+**KV** holds the snapshot — one blob, read on every request, cached at the edge. At 22,442
+offers it is 11.9MB packed, and 0.16MB over the wire: the data is repetitive enough that
+compression does the work a smaller payload would.
 **D1** holds history, and only rows that *changed*: Apple prices barely move, so writing
 every configuration every day would be ~90k rows to record that nothing happened.
+
+`GET /api/status` reports what is published and when it was collected.
 
 ## Second-hand
 
@@ -88,7 +95,7 @@ Nothing else free was usable: CeX's API is behind a bot challenge, Back Market's
 robots.txt disallows the paths its own site calls, and eBay wants a registered key. The
 refurbished grid needs none of that, comes from an origin already handled politely here,
 and ships the whole category in one page — six requests for the entire catalogue, against
-ninety batches for a price sweep.
+~1,245 for a price sweep.
 
 Only the UK is collected. A refurbished unit is one physical machine in one warehouse, so
 unlike a list price it does not generalise across markets.
@@ -177,8 +184,9 @@ npx jiti scripts/collect.ts uk us jp   # authorised live collection into data/sn
 npm run dev                            # Vite serves that file as /api/snapshot
 ```
 
-`scripts/collect.ts` runs the same code as the cron, from a terminal. Omit the market
-arguments to sweep all 15 (about ten minutes, deliberately paced). Live collection is not
+`scripts/collect.ts` is the collector the daily Action runs, driven from a terminal. Omit
+the market arguments to sweep all 15 (about half an hour, deliberately paced), then
+`scripts/publish.ts` pushes the result to KV and D1. Live collection is not
 part of normal tests or CI.
 
 Development follows the repository-owned AI-native SDLC in [`AGENTS.md`](AGENTS.md), with
@@ -201,12 +209,11 @@ npm run deploy
 The custom domain is declared in `wrangler.jsonc`; Wrangler creates the DNS record in the
 `eugnel.com` zone on first deploy.
 
-This runs on the **Workers free plan**, which is what the batching exists for: an
-invocation there gets 50 subrequests, and a retry spends from the same allowance as a
-first attempt. `RequestBudget` enforces a ceiling of 30 inside the fetch helper, and
-`planSweep` sizes each batch to 15, so throttling costs a family rather than the whole
-invocation. Exceeding the cap does not fail one request — it aborts the invocation and
-discards everything it had already collected.
+This runs on the **Workers free plan**, and now stays inside it: the Worker only reads.
+Publishing needs a Cloudflare API token with *Workers KV Storage: Edit* and *D1: Edit*,
+held as the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The
+scraper's own `RequestBudget` still paces collection — a runner has no subrequest cap, so
+it exists there to be polite to Apple rather than to fit a platform limit.
 
 ## For agents
 

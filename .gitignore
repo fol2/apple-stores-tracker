@@ -2,6 +2,7 @@ node_modules/
 dist/
 .wrangler/
 .dev.vars
+.env
 *.local
 .DS_Store
 data/
@@ -10,3 +11,5 @@ data/
 *.tsbuildinfo
 .wtail*.log
 .tail.log
+.scratch/
+.claude/worktrees/

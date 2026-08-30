@@ -41,15 +41,17 @@ The owner has applied for a developer account (2026-08-28). When the keys exist:
 
 1. `developer.ebay.com` → Application Keys → **Production** keyset → App ID (Client ID) and
    Cert ID (Client Secret).
-2. The owner stores them; they must not pass through an agent:
-   ```bash
-   npx wrangler secret put EBAY_CLIENT_ID
-   npx wrangler secret put EBAY_CLIENT_SECRET
-   ```
+2. The owner stores them; they must not pass through an agent. They belong as
+   **GitHub repository secrets**, not Worker secrets — the Worker no longer collects
+   anything, so a credential given to it would never be used:
+
+   `Settings → Secrets and variables → Actions → New repository secret`, as
+   `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET`.
 3. Then build: OAuth client-credentials exchange for an application token (scope
-   `https://api.ebay.com/oauth/api_scope`, cached in KV — it lasts about two hours), then
+   `https://api.ebay.com/oauth/api_scope`), then
    `GET /buy/browse/v1/item_summary/search` with `X-EBAY-C-MARKETPLACE-ID: EBAY_GB`,
-   filtered to Certified Refurbished.
+   filtered to Certified Refurbished. The token lasts about two hours and a run lasts
+   minutes, so it is fetched per run and held in memory — there is nothing to cache.
 
 ### The constraint that must survive the build
 
