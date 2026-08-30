@@ -10,13 +10,14 @@ Load this skill only for product code, scraping, price data, Worker/API/MCP, UI,
 ## Architecture map
 
 - `src/scrape/`: Apple selector/configurator and refurbished-grid parsing, provider requests, shared throttling, bounded retries, and `RequestBudget`.
-- `src/shared/`: stable types, markets/stores, product families, conversion/refund logic, price diffs, sweep planning, and scheduling.
-- `src/worker/`: Cloudflare Worker HTTP/API/MCP entry point, KV/D1 storage, cron scheduling, sweep/probe execution, request-path exchange-rate refresh, and history draining.
+- `src/shared/`: stable types, markets/stores, product families, conversion/refund logic, and price diffs.
+- `src/worker/`: Cloudflare Worker HTTP/API/MCP entry point, KV/D1 reads, and request-path exchange-rate refresh. The Worker does not collect.
 - `src/app/`: React/Vite reader UI and comparison controls.
 - `migrations/`: ordered D1 schema history. Never rewrite an applied migration.
 - `tests/fixtures/`: captured provider inputs for deterministic fixture-backed tests.
 - `tests/`: parser, shared logic, request planning, scheduling, and MCP contracts.
-- `wrangler.jsonc`: production Worker, assets, route, cron, KV, and D1 binding authority.
+- `wrangler.jsonc`: production Worker, assets, route, KV, and D1 binding authority.
+- `.github/workflows/collect.yml` + `scripts/collect.ts`, `scripts/collect-refurb.ts`, `scripts/publish.ts`: the daily collection, which runs off Cloudflare because a free plan's cron cannot afford it.
 
 ## Standard commands
 
@@ -52,13 +53,13 @@ npm run ci
 - Preserve shared origin-wide cool-off and throttling treatment for HTTP 429, 503, and Apple's 541 response.
 - Preserve bounded retries, pool size three, and pacing unless an authorised measured experiment demonstrates a safer policy.
 - Every outbound attempt, including retries, spends from `RequestBudget`.
-- `planSweep` is derived from discovered family cost; no planned step may depend on exceeding the Worker free-plan subrequest ceiling.
+- Collection runs on a GitHub runner, not the Worker: parsing a page costs ~1.8ms of cold CPU and a full sweep ~5 CPU-seconds, against the 4.8 a free plan's cron can spend in a day. Do not move collection back into the Worker without that budget changing.
 - Assembly/history work is also bounded. Large first-run or migration backlogs must drain over later ticks rather than publish a snapshot and silently lose history.
 - Live Apple compatibility or politeness claims require an explicitly authorised, bounded read-only probe with a stated request budget and stop rule. They never run in routine CI.
 
 ## Data and migration invariants
 
-- KV owns the current snapshot, sweep/probe/rate state, and bounded pending work.
+- KV owns the current snapshot, exchange rates, and refurbished listings. There is no sweep state.
 - D1 owns changed historical price points rather than daily rewrites of unchanged data.
 - Price-history identity includes market, family, store, configuration, and observation date.
 - Add a new ordered migration for schema changes. Never edit an already-applied migration to make a fresh database look correct.
@@ -74,7 +75,7 @@ npm run ci
 
 ## API, MCP, and UI evidence
 
-- The Worker is the authority for site/API/MCP/cron coordination.
+- The Worker is the authority for site/API/MCP responses; the workflow is the authority for collection.
 - The MCP endpoint is stateless and read-only unless an explicit public-contract change says otherwise.
 - API/MCP behaviour needs request/response tests; source presence is insufficient.
 - UI logic changes need deterministic tests where possible, a successful production build, and visual inspection when layout, hierarchy, readability, or mobile containment is claimed.
@@ -90,4 +91,4 @@ npm run db:migrate
 npx wrangler ... --remote
 ```
 
-The same applies to credential use, KV/D1 mutation, DNS/custom-domain change, cron change, and a broad live sweep. State the rollback or fail-closed stop before acting and observe the resulting production state afterwards.
+The same applies to credential use, KV/D1 mutation, DNS/custom-domain change, workflow-schedule change, and a broad live sweep. State the rollback or fail-closed stop before acting and observe the resulting production state afterwards.

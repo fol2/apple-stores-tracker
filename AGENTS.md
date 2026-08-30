@@ -50,13 +50,13 @@ Keep uncertain discovery separate from delivery. Research needs an explicit ques
 
 Use the focused test named in the product skill while iterating. Run `npm run check:governance` for agent/CI contract work and `npm run ci` for the complete maintained local gate. Do not retry unchanged failures to manufacture green.
 
-Evidence must observe the claim: fixtures/tests for deterministic logic and API/MCP behaviour; build for compilation/bundling; running visual inspection for layout/comprehension; an explicitly authorised bounded probe for live Apple compatibility; explicit effect authority plus post-effect observation for deployment, cron, KV, D1, DNS, or migration claims. An unrelated green suite is not extra safety.
+Evidence must observe the claim: fixtures/tests for deterministic logic and API/MCP behaviour; build for compilation/bundling; running visual inspection for layout/comprehension; an explicitly authorised bounded probe for live Apple compatibility; explicit effect authority plus post-effect observation for deployment, scheduled-workflow, KV, D1, DNS, or migration claims. An unrelated green suite is not extra safety.
 
 For product work, the skill owns the detailed `configKey`, source/store/currency provenance, scraper-throttling, `RequestBudget`, migration, refund-trust, MCP, and UI invariants. Never silently discard partial errors, compare unlike configurations, weaken provider politeness, rewrite an applied migration, or turn uncertain Apple participation into a confident refund claim.
 
 ## External-effect boundary
 
-A code task does not implicitly authorise `npm run deploy`, a remote D1 migration, KV/D1 mutation, DNS/custom-domain or cron change, credential use, or broad live sweep. These require explicit authority, current target/config verification, relevant preflight evidence, and a rollback or fail-closed stop. Normal tests and CI stay fixture-backed and provider-free.
+A code task does not implicitly authorise `npm run deploy`, a remote D1 migration, KV/D1 mutation, DNS/custom-domain or scheduled-workflow change, credential use, or broad live sweep. These require explicit authority, current target/config verification, relevant preflight evidence, and a rollback or fail-closed stop. Normal tests and CI stay fixture-backed and provider-free.
 
 Stop and report the concrete blocker rather than weakening acceptance when a selected gate is unavailable/inconclusive, credentials or provider access are missing, a public/persistence contract lacks migration acceptance, or the requested change would violate the product invariants above.
 

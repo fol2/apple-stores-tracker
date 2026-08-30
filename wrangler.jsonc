@@ -16,12 +16,11 @@
     "run_worker_first": ["/api/*", "/mcp", "/llms.txt"]
   },
 
-  // One planned batch per tick, each sized to fit a single invocation's
-  // subrequest allowance. A pass is ~105 batches across 15 markets and both of
-  // Apple's stores, so it needs a brisk tick to finish in hours rather than
-  // days; at three minutes a pass lands in under six. The worker then idles
-  // until the next pass is due -- see SWEEP_INTERVAL_MS.
-  "triggers": { "crons": ["*/3 * * * *"] },
+  // Deliberately empty, and deliberately present: omitting the field leaves
+  // whatever triggers the account already has, so this is what actually clears
+  // them. Collection lives in .github/workflows/collect.yml -- a free plan's
+  // cron gets 4.8 CPU-seconds a day and a full sweep needs about five.
+  "triggers": { "crons": [] },
 
   "kv_namespaces": [{ "binding": "PRICES", "id": "47e39bc1784b4a7d8942a7d9fb61c235" }],
 

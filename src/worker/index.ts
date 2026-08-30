@@ -2,9 +2,8 @@ import { CATEGORIES, FAMILIES } from '../shared/families'
 import { BASE_CURRENCY, MARKETS, REFURB_MARKET } from '../shared/markets'
 import { REFUND_POLICIES } from '../shared/refunds'
 import { handleMcp } from './mcp'
-import { runNextStep } from './sweep-runner'
 import { currentRates } from './rates'
-import { getRefurb, getSnapshot, getSweepState, type Env } from './store'
+import { getRefurb, getSnapshot, type Env } from './store'
 
 const json = (body: unknown, maxAge: number): Response =>
   Response.json(body, {
@@ -110,10 +109,10 @@ export default {
     }
 
     if (url.pathname === '/api/status') {
-      const [snapshot, fx, state] = await Promise.all([
+      const [snapshot, fx, refurb] = await Promise.all([
         getSnapshot(env),
         currentRates(env, ctx),
-        getSweepState(env),
+        getRefurb(env, REFURB_MARKET),
       ])
       return json(
         {
@@ -126,29 +125,12 @@ export default {
             readAt: fx?.refreshedAt ?? null,
             nextQuoteDue: fx?.nextUpdateAt ?? null,
           },
-          changeDetection: { lastProbeAt: state.probeAt, position: state.probeCursor },
-          secondHand: { market: REFURB_MARKET, readAt: state.refurbAt },
-          fullSweep: {
-            inProgress: state.step >= 0,
-            step: state.step >= 0 ? state.step : null,
-            startedAt: state.startedAt,
-            finishedAt: state.finishedAt,
-            reason: state.reason,
-          },
+          secondHand: { market: REFURB_MARKET, readAt: refurb?.collectedAt ?? null },
         },
         60,
       )
     }
 
     return env.ASSETS.fetch(request)
-  },
-
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      runNextStep(env).then(
-        (message) => console.log(`sweep: ${message}`),
-        (error) => console.error(`sweep failed: ${error}`),
-      ),
-    )
   },
 }

@@ -10,3 +10,4 @@ data/
 *.tsbuildinfo
 .wtail*.log
 .tail.log
+.scratch/
