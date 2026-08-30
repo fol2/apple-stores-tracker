@@ -22,6 +22,16 @@ export const ROWS_PER_FILE = 10_000
  */
 export const quote = (value: string): string => `'${value.replace(/'/g, "''")}'`
 
+/**
+ * `amount` is interpolated as a bare number, and is the one value here that
+ * does not go through `quote()`.
+ *
+ * That is safe rather than an oversight: every amount originates in
+ * `JSON.parse` of an Apple response, which cannot produce NaN or Infinity, and
+ * `expandVariant` only ever sums deltas it has already found in the priced
+ * options (`apple.ts`, `v.value in available`). A quoted number would also
+ * bind as text and silently break `ORDER BY` on the column.
+ */
 const row = (p: PricePoint): string =>
   `(${quote(p.marketId)},${quote(p.familyId)},${quote(p.store)},${quote(p.configKey)},` +
   `${quote(p.currency)},${p.amount},${quote(p.observedOn)})`

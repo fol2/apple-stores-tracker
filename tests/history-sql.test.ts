@@ -27,6 +27,21 @@ describe('building history statements', () => {
     )
   })
 
+  /**
+   * SQLite is not MySQL: a backslash carries no meaning inside a string
+   * literal, so escaping it would store a doubled one. Worth pinning, because
+   * "escape the backslashes too" is the obvious wrong instinct here.
+   */
+  it('leaves a backslash alone', () => {
+    expect(quote('a\\b')).toBe("'a\\b'")
+  })
+
+  it('keeps a newline inside the literal rather than breaking the statement', () => {
+    const [sql] = historyStatements([point({ familyId: 'two\nlines' })])
+    expect(sql).toContain("'two\nlines'")
+    expect(sql.match(/;/g)).toHaveLength(1)
+  })
+
   it('carries a quote in scraped data through to one intact statement', () => {
     const [sql] = historyStatements([point({ familyId: "apple's-mac" })])
     expect(sql).toContain("'apple''s-mac'")
