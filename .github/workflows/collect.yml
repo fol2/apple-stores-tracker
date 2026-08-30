@@ -35,15 +35,19 @@ jobs:
 
       - run: npm ci
 
+      # --no-install throughout: a runner that has to fetch jiti at run time is
+      # a runner whose lockfile no longer covers the pipeline, and that should
+      # fail here rather than quietly pull a different version.
+
       # Prices first: the refurbished read appends to the same snapshot file.
       - name: Collect list prices
-        run: npx jiti scripts/collect.ts
+        run: npx --no-install jiti scripts/collect.ts
 
       - name: Collect refurbished listings
-        run: npx jiti scripts/collect-refurb.ts
+        run: npx --no-install jiti scripts/collect-refurb.ts
 
       - name: Publish to KV and D1
-        run: npx jiti scripts/publish.ts
+        run: npx --no-install jiti scripts/publish.ts
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
