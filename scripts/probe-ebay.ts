@@ -34,7 +34,21 @@ if (!clientId || !clientSecret) throw new Error('EBAY_CLIENT_ID and EBAY_CLIENT_
  * that looks like a finding.
  */
 if (clientId.includes('-SBX-')) {
-  throw new Error('this is a Sandbox key (-SBX-); the probe needs the Production keyset')
+  throw new Error('the App ID is a Sandbox key (-SBX-); the probe needs the Production keyset')
+}
+
+/**
+ * The other half names its environment too, as a prefix: `PRD-...` or
+ * `SBX-...`. Checked separately because the halves are copied from separate
+ * fields, and a Production App ID paired with a Sandbox Cert ID authenticates
+ * as neither -- eBay answers `invalid_client` and does not say which half it
+ * disliked.
+ */
+if (clientSecret.startsWith('SBX-')) {
+  throw new Error('the Cert ID is a Sandbox secret (SBX-); it must match the Production App ID')
+}
+if (!clientSecret.startsWith('PRD-')) {
+  console.log(`note: Cert ID does not begin with PRD- (starts "${clientSecret.slice(0, 4)}")`)
 }
 
 const query = process.argv[2] ?? 'Apple MacBook Pro M4'
