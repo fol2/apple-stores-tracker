@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ageInWords, freshnessOf } from '../shared/freshness'
 import { compare, displayCurrencies, formatIn, formatLocal } from '../shared/convert'
 import { SpreadAxis } from './components/SpreadAxis'
 import { MarketTable } from './components/MarketTable'
@@ -136,6 +137,8 @@ function Prices() {
       familyId={familyId}
       onFamily={chooseFamily}
     >
+      <StaleNotice collectedAt={data.collectedAt} />
+
       <section className="mt-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -367,6 +370,31 @@ function Shell({ children, categories, families, familyId, onFamily }: ShellProp
 
       <main className="mx-auto max-w-5xl px-5 pb-24">{children}</main>
     </div>
+  )
+}
+
+/**
+ * Say plainly when the prices are old.
+ *
+ * The collection timestamp has always been in the footnotes, but as a neutral
+ * fact in small grey type -- fine while a cron retried every three minutes and
+ * failed loudly, useless now that a stopped GitHub Action simply goes quiet.
+ * A price tracker serving stale prices without saying so is worse than one
+ * that is plainly down, because the reader has no reason to doubt it.
+ */
+function StaleNotice({ collectedAt }: { collectedAt: string }) {
+  const freshness = freshnessOf(collectedAt, new Date())
+  if (!freshness?.stale) return null
+
+  return (
+    <p
+      role="status"
+      className="mt-6 rounded border border-high/40 bg-high/[0.07] px-4 py-3 text-sm"
+    >
+      <strong className="font-semibold">These prices are {ageInWords(freshness.hoursOld)} old.</strong>{' '}
+      Collection runs daily and has not completed since then, so Apple may have changed
+      prices this page still shows. Check the store before acting on anything here.
+    </p>
   )
 }
 
