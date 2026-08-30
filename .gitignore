@@ -12,3 +12,4 @@ data/
 .wtail*.log
 .tail.log
 .scratch/
+.claude/worktrees/
