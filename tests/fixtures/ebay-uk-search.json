@@ -1,0 +1,94 @@
+{
+  "href": "https://api.ebay.com/buy/browse/v1/item_summary/search?q=Apple+MacBook+Pro+M4&limit=5",
+  "total": 412,
+  "limit": 5,
+  "offset": 0,
+  "itemSummaries": [
+    {
+      "itemId": "v1|296123456789|0",
+      "legacyItemId": "296123456789",
+      "title": "Apple MacBook Pro 14\" M4 Pro 24GB 512GB Space Black - Certified Refurbished",
+      "price": {
+        "value": "1549.00",
+        "currency": "GBP"
+      },
+      "condition": "Certified - Refurbished",
+      "conditionId": "2000",
+      "itemWebUrl": "https://www.ebay.co.uk/itm/296123456789",
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C296123456789%7C0",
+      "image": {
+        "imageUrl": "https://i.ebayimg.com/images/g/abc/s-l225.jpg"
+      },
+      "seller": {
+        "username": "t***s",
+        "feedbackPercentage": "99.2",
+        "feedbackScore": 48210
+      },
+      "itemLocation": {
+        "postalCode": "M1***",
+        "country": "GB"
+      },
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "listingMarketplaceId": "EBAY_GB"
+    },
+    {
+      "itemId": "v1|296987654321|0",
+      "title": "MacBook Pro 14 inch M4 16GB 512GB - Excellent Refurbished",
+      "price": {
+        "value": "1299.99",
+        "currency": "GBP"
+      },
+      "condition": "Excellent - Refurbished",
+      "conditionId": "2010",
+      "itemWebUrl": "https://www.ebay.co.uk/itm/296987654321",
+      "seller": {
+        "username": "m***p",
+        "feedbackPercentage": "98.0",
+        "feedbackScore": 1203
+      }
+    },
+    {
+      "itemId": "v1|296111111111|0",
+      "title": "Auction listing with no fixed price",
+      "price": {
+        "value": null,
+        "currency": "GBP"
+      },
+      "condition": "Very Good - Refurbished",
+      "conditionId": "2020",
+      "itemWebUrl": "https://www.ebay.co.uk/itm/296111111111"
+    },
+    {
+      "itemId": "v1|296222222222|0",
+      "price": {
+        "value": "899.00",
+        "currency": "GBP"
+      },
+      "condition": "Good - Refurbished",
+      "conditionId": "2030",
+      "itemWebUrl": "https://www.ebay.co.uk/itm/296222222222",
+      "title": "MacBook Pro 14 M4 - Good Refurbished, no seller data"
+    },
+    {
+      "title": "Listing with no id at all",
+      "price": {
+        "value": "100.00",
+        "currency": "GBP"
+      },
+      "condition": "Certified - Refurbished",
+      "conditionId": "2000"
+    },
+    {
+      "itemId": "v1|296333333333|0",
+      "price": {
+        "value": "750.00",
+        "currency": "GBP"
+      },
+      "condition": "Certified - Refurbished",
+      "conditionId": "2000",
+      "itemWebUrl": "https://www.ebay.co.uk/itm/296333333333"
+    }
+  ]
+}
