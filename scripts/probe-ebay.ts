@@ -17,8 +17,10 @@ import { applicationToken, parseListings, MARKETPLACE, REFURBISHED_CONDITIONS } 
 
 if (existsSync('.env')) process.loadEnvFile('.env')
 
-const clientId = process.env.EBAY_CLIENT_ID
-const clientSecret = process.env.EBAY_CLIENT_SECRET
+// Trimmed: a credential pasted into a secret field often carries a trailing
+// newline, and eBay rejects the pair without saying which half was wrong.
+const clientId = process.env.EBAY_CLIENT_ID?.trim()
+const clientSecret = process.env.EBAY_CLIENT_SECRET?.trim()
 if (!clientId || !clientSecret) throw new Error('EBAY_CLIENT_ID and EBAY_CLIENT_SECRET must be set')
 
 /**
@@ -36,6 +38,9 @@ if (clientId.includes('-SBX-')) {
 }
 
 const query = process.argv[2] ?? 'Apple MacBook Pro M4'
+console.log(`app id: ${clientId.slice(0, 12)}...${clientId.slice(-4)} (${clientId.length} chars)`)
+console.log(`secret:  ${clientSecret.length} chars`)
+
 const token = await applicationToken(clientId, clientSecret)
 console.log(`✓ token obtained (${token.length} chars)`)
 
