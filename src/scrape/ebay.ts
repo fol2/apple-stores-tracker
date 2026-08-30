@@ -63,9 +63,19 @@ export async function applicationToken(clientId: string, clientSecret: string): 
   })
 
   if (!response.ok) {
-    // Deliberately not including the body: a failed token exchange echoes back
-    // parts of what was sent, and this message reaches logs.
-    throw new Error(`eBay token exchange failed: ${response.status}`)
+    // OAuth's own error fields, and only those. They name the fault --
+    // `invalid_client` for a bad pair, `invalid_scope` for an unauthorised
+    // one -- without echoing anything that was sent. An earlier version
+    // suppressed the body wholesale, which turned every failure into an
+    // unattributable 401.
+    const detail = await response
+      .json()
+      .then((body) => {
+        const oauth = body as { error?: unknown; error_description?: unknown }
+        return [oauth.error, oauth.error_description].filter((v) => typeof v === 'string').join(': ')
+      })
+      .catch(() => '')
+    throw new Error(`eBay token exchange failed: ${response.status}${detail ? ` -- ${detail}` : ''}`)
   }
 
   const body = (await response.json()) as { access_token?: unknown }
