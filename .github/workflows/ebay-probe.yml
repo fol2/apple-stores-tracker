@@ -1,0 +1,30 @@
+# Check eBay's Browse API still answers the way the parser expects.
+#
+# Manual only, and it writes nothing: the second-hand data it reads never
+# reaches KV, D1 or the site. It exists because `src/scrape/ebay.ts` is written
+# against a published response example, and an example is not a contract.
+name: Probe eBay
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: What to search for
+        required: false
+        default: Apple MacBook Pro M4
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx --no-install jiti scripts/probe-ebay.ts "${{ inputs.query }}"
+        env:
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
