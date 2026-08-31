@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { MARKETS, STORES } from '../src/shared/markets'
 import { FAMILIES, hasEducationPricing } from '../src/shared/families'
 import { collectFamilies, discoverStructures, RequestBudget } from '../src/scrape/sweep'
+import { collapseUnpaidDimensions } from '../src/shared/offers'
 import { fetchFxRates } from '../src/scrape/fx'
 import type { Offer } from '../src/shared/types'
 
@@ -53,13 +54,30 @@ try {
   console.log(`FX failed: ${error}`)
 }
 
+/**
+ * Decided over the whole collection, so every market keeps the same key.
+ * A market-filtered run is a development convenience and may therefore reach a
+ * different verdict from a full one -- the published catalogue always comes
+ * from a full run.
+ */
+const priced = collapseUnpaidDimensions(offers)
+if (priced.length < offers.length) {
+  console.log(`\nCollapsed ${offers.length - priced.length} offers that only restate a price`)
+}
+
 mkdirSync('data', { recursive: true })
 writeFileSync(
   'data/snapshot.json',
   JSON.stringify(
-    { collectedAt: new Date().toISOString(), markets: markets.map((m) => m.id), offers, errors, fx },
+    {
+      collectedAt: new Date().toISOString(),
+      markets: markets.map((m) => m.id),
+      offers: priced,
+      errors,
+      fx,
+    },
     null,
     2,
   ),
 )
-console.log(`\nWrote data/snapshot.json: ${offers.length} offers, ${errors.length} errors`)
+console.log(`\nWrote data/snapshot.json: ${priced.length} offers, ${errors.length} errors`)

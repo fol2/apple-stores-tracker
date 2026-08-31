@@ -1,4 +1,4 @@
-import type { StoredOffer } from './offers'
+import { collapseUnpaidDimensions, type StoredOffer } from './offers'
 
 /** The share of the published catalogue a new collection has to still carry. */
 export const KEPT_AT_LEAST = 0.9
@@ -32,12 +32,21 @@ export function diminishedBy(
   if (!before?.offers?.length) return []
 
   const lostMarkets = (before.markets ?? []).filter((m) => !now.markets.includes(m))
-  const kept = now.offers.length / before.offers.length
+
+  // Both sides are counted the same way, because the catalogue's shape can
+  // change deliberately. When a dimension stops being carried -- a finish
+  // every colour of which costs the same -- the new collection is a quarter
+  // smaller while describing exactly the same machines, and a guard comparing
+  // raw row counts would read that as Apple withdrawing a quarter of its
+  // range. Collapsing the published side too asks the question that was meant:
+  // are there fewer machines, not fewer rows.
+  const previously = collapseUnpaidDimensions(before.offers)
+  const kept = now.offers.length / previously.length
 
   return [
     lostMarkets.length > 0 ? `markets missing: ${lostMarkets.join(', ')}` : '',
     kept < KEPT_AT_LEAST
-      ? `offers fell from ${before.offers.length} to ${now.offers.length} (${(kept * 100).toFixed(0)}%)`
+      ? `offers fell from ${previously.length} to ${now.offers.length} (${(kept * 100).toFixed(0)}%)`
       : '',
   ].filter(Boolean)
 }
