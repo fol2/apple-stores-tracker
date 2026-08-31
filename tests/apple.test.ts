@@ -292,7 +292,7 @@ describe('a market that adds a step only some SKUs answer', () => {
   const ipadPro = FAMILIES.find((f) => f.id === 'ipad-pro')!
   const us = marketById('us')!
   const page = fixture('apple-us-ipad-pro-select.html')
-  const offers = parseCatalogOffers(page, us, ipadPro)
+  const offers = parseCatalogOffers(page, us, ipadPro, parseFamilyStructure(page, ipadPro))
 
   it('keeps connectivity, which costs $200', () => {
     expect(offers.map((o) => `${o.configKey} ${o.amount}`)).toEqual([
@@ -328,7 +328,8 @@ describe('a market that sells the same handset on contract', () => {
   const page = fixture('apple-us-iphone-17-select.html')
 
   it('quotes the SIM-free machine, keyed as every other market keys it', () => {
-    expect(parseCatalogOffers(page, us, iphone).map((o) => `${o.configKey} ${o.amount}`)).toEqual([
+    const offers = parseCatalogOffers(page, us, iphone, parseFamilyStructure(page, iphone))
+    expect(offers.map((o) => `${o.configKey} ${o.amount}`)).toEqual([
       'dimensionCapacity=256gb 829',
       'dimensionCapacity=512gb 1029',
     ])
@@ -337,6 +338,56 @@ describe('a market that sells the same handset on contract', () => {
   it('does not offer the carrier as a specification', () => {
     expect(parseFamilyStructure(page, iphone).dimensions.map((d) => d.field)).toEqual([
       'dimensionCapacity',
+    ])
+  })
+})
+
+/**
+ * The shape of a configuration is one shape for the whole catalogue, and this
+ * is why. A market that charges for an option the other fourteen give away
+ * would, left to read its own page, key the same machine on a dimension
+ * nobody else carries -- and a key no other market produces is a market that
+ * reads "not sold" in every comparison, which is exactly what the US carrier
+ * step did to every iPad.
+ */
+describe('a market that prices an option the catalogue does not carry', () => {
+  const iphone = FAMILIES.find((f) => f.id === 'iphone-17')!
+  const catalogue = parseFamilyStructure(fixture('apple-uk-iphone-17-select.html'), iphone)
+
+  // The same one build, in two finishes, one of which this market charges for.
+  const page = `<script>window.PRODUCT_SELECTION_BOOTSTRAP = { productSelectionData: ${JSON.stringify({
+    sections: [
+      { formFieldName: 'dimensionColor', header: '<span>Finish. </span>' },
+      { formFieldName: 'dimensionCapacity', header: '<span>Storage. </span>' },
+    ],
+    products: [
+      { partNumber: 'MG6J4QN/A', fullPrice: 'black', dimensionColor: 'black', dimensionCapacity: '256gb' },
+      { partNumber: 'MG6K4QN/A', fullPrice: 'white', dimensionColor: 'white', dimensionCapacity: '256gb' },
+    ],
+    displayValues: {
+      dimensionColor: { black: { value: 'Black' }, white: { value: 'White' } },
+      dimensionCapacity: { '256gb': { value: '256<small>GB</small>' } },
+      prices: {
+        black: { product: 'MG6J4QN/A', amountBeforeTradeIn: 839 },
+        white: { product: 'MG6K4QN/A', amountBeforeTradeIn: 799 },
+      },
+    },
+  })} }</script>`
+
+  it('keys the machine the way every other market keys it', () => {
+    const offers = parseCatalogOffers(page, uk, iphone, catalogue)
+    expect(offers.map((o) => o.configKey)).toEqual(['dimensionCapacity=256gb'])
+  })
+
+  /** Dearer first in the page's own order, so the choice is a choice. */
+  it('quotes the cheapest way to buy that machine here', () => {
+    expect(parseCatalogOffers(page, uk, iphone, catalogue)[0].amount).toBe(799)
+  })
+
+  it('keeps the market its own labels', () => {
+    const [offer] = parseCatalogOffers(page, uk, iphone, catalogue)
+    expect(offer.dimensions).toEqual([
+      { field: 'dimensionCapacity', value: '256gb', label: '256 GB' },
     ])
   })
 })

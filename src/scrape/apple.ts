@@ -314,6 +314,16 @@ function priceRelevantFields(
   )
 }
 
+/**
+ * What Apple calls one option on this market's page. Read from the page rather
+ * than from a parsed structure, so a market keeps its own translations even
+ * for a dimension its own prices would not have judged worth carrying.
+ */
+const catalogLabel = (data: CatalogSelectionData, field: string, value: string): string => {
+  const entry = data.displayValues?.[field]?.[value]
+  return cleanLabel(entry?.value ?? entry?.header, value)
+}
+
 function parseCatalogStructure(family: Family, data: CatalogSelectionData): FamilyStructure {
   const products = catalogProducts(data)
   const fields = data.sections.map((s) => s.formFieldName)
@@ -322,7 +332,6 @@ function parseCatalogStructure(family: Family, data: CatalogSelectionData): Fami
   const dimensions = data.sections
     .filter((section) => relevant.includes(section.formFieldName))
     .map((section) => {
-      const values = data.displayValues[section.formFieldName] ?? {}
       const order = products
         .map((p) => dimensionSource(p)[section.formFieldName])
         .filter((v, i, all): v is string => typeof v === 'string' && all.indexOf(v) === i)
@@ -332,7 +341,7 @@ function parseCatalogStructure(family: Family, data: CatalogSelectionData): Fami
         values: order.map((value) => ({
           field: section.formFieldName,
           value,
-          label: cleanLabel(values[value]?.value ?? values[value]?.header, value),
+          label: catalogLabel(data, section.formFieldName, value),
         })),
       }
     })
@@ -343,21 +352,26 @@ function parseCatalogStructure(family: Family, data: CatalogSelectionData): Fami
 /**
  * Price a catalogue family from its own select page. Unlike the CTO flow this
  * needs the page for the market being priced, because the prices live in it.
+ *
+ * What a configuration *is*, though, comes from the structure discovered once
+ * for the whole catalogue rather than from this page. Reading the shape out of
+ * each market's own prices is how a market comes to key the same machine
+ * differently from the other fourteen and drop out of every comparison as
+ * "not sold" -- the US carrier step did precisely that to every iPad, and any
+ * market that charges for an option the rest give away would do it again.
  */
 export function parseCatalogOffers(
   html: string,
   market: Market,
   family: Family,
+  structure: FamilyStructure,
   store: Store = 'retail',
 ): Offer[] {
   const data = extractJsonAfter(html, 'productSelectionData:') as CatalogSelectionData
   if (isCto(data)) throw new Error(`${family.id} is a build-to-order family`)
 
-  const structure = parseCatalogStructure(family, data)
   const priceOf = catalogPriceResolver(data)
   const fields = structure.dimensions.map((d) => d.field)
-  const labelOf = (field: string, value: string) =>
-    structure.dimensions.find((d) => d.field === field)?.values.find((v) => v.value === value)?.label ?? value
 
   const sourceUrl = storeUrl(market, family.route, store)
   const byConfig = new Map<string, Offer>()
@@ -369,12 +383,18 @@ export function parseCatalogOffers(
     const source = dimensionSource(product)
     const dimensions: DimensionValue[] = fields
       .filter((field) => typeof source[field] === 'string')
-      .map((field) => ({ field, value: source[field], label: labelOf(field, source[field]) }))
+      .map((field) => ({
+        field,
+        value: source[field],
+        label: catalogLabel(data, field, source[field]),
+      }))
     const configKey = configKeyOf(dimensions)
 
-    // Several colours share one hardware configuration; keep the first, since
-    // they are the same machine at the same price.
-    if (byConfig.has(configKey)) continue
+    // Several SKUs share one configuration -- the colours of a build, and any
+    // option this market prices that the catalogue as a whole does not carry.
+    // Where they disagree, quote the cheapest way to buy the machine here.
+    const already = byConfig.get(configKey)
+    if (already && already.amount <= amount) continue
     byConfig.set(configKey, {
       marketId: market.id,
       familyId: family.id,

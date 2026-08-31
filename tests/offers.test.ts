@@ -83,10 +83,12 @@ describe('what the snapshot stores', () => {
  */
 describe('what the snapshot stores, for a catalogue family', () => {
   const iphone = FAMILIES.find((f) => f.id === 'iphone-17')!
+  const page = fixture('apple-uk-iphone-17-select.html')
   const offers: Offer[] = parseCatalogOffers(
-    fixture('apple-uk-iphone-17-select.html'),
+    page,
     uk,
     iphone,
+    parseFamilyStructure(page, iphone),
     'retail',
   )
 

@@ -181,12 +181,12 @@ export async function collectFamilies(
 
   type Job =
     | { kind: 'cto'; family: Family; structure: FamilyStructure; variant: DimensionValue[] }
-    | { kind: 'catalog'; family: Family }
+    | { kind: 'catalog'; family: Family; structure: FamilyStructure }
 
   const jobs = structures.flatMap((structure): Job[] => {
     const family = FAMILIES.find((f) => f.id === structure.familyId)
     if (!family) return []
-    if (structure.kind === 'catalog') return [{ kind: 'catalog', family }]
+    if (structure.kind === 'catalog') return [{ kind: 'catalog', family, structure }]
     return structure.variants.map((variant) => ({ kind: 'cto' as const, family, structure, variant }))
   })
 
@@ -194,7 +194,7 @@ export async function collectFamilies(
     try {
       if (job.kind === 'catalog') {
         const html = await (await get(storeUrl(market, job.family.route, store), budget)).text()
-        offers.push(...parseCatalogOffers(html, market, job.family, store))
+        offers.push(...parseCatalogOffers(html, market, job.family, job.structure, store))
         return
       }
       const url = ctoUrl(market, job.structure.collection!, job.variant, store)
