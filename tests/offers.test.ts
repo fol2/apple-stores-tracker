@@ -6,7 +6,12 @@ import {
   parseFamilyStructure,
   parseVariantPricing,
 } from '../src/scrape/apple'
-import { hydrateOffers, packOffers, type StoredOffer } from '../src/shared/offers'
+import {
+  collapseUnpaidDimensions,
+  hydrateOffers,
+  packOffers,
+  type StoredOffer,
+} from '../src/shared/offers'
 import { FAMILIES } from '../src/shared/families'
 import { marketById } from '../src/shared/markets'
 import type { Offer } from '../src/shared/types'
@@ -95,5 +100,103 @@ describe('what the snapshot stores, for a catalogue family', () => {
 
   it('comes back byte-identical to what the scraper produced', () => {
     expect(hydrateOffers(packOffers(offers))).toEqual(offers)
+  })
+})
+
+/**
+ * Apple's configurator lists a finish as a priced option whether or not it
+ * costs anything, so a MacBook Air arrived as a hundred offers that are
+ * twenty-five machines -- a quarter of the published snapshot spent restating
+ * prices already given, against KV's 25MB limit and downloaded whole by every
+ * reader, plus a finish picker on the page that moves no number.
+ */
+describe('dimensions nobody pays for', () => {
+  const build = (
+    marketId: string,
+    dimensions: [string, string][],
+    amount: number,
+  ): StoredOffer => ({
+    marketId,
+    familyId: 'macbook-air',
+    store: 'retail',
+    dimensions: dimensions.map(([field, value]) => ({ field, value, label: value })),
+    amount,
+    currency: marketId === 'uk' ? 'GBP' : 'EUR',
+    partNumber: null,
+  })
+
+  const finishes = ['silver', 'midnight']
+  const inEveryFinish = (marketId: string, storage: string, amount: number) =>
+    finishes.map((finish) =>
+      build(marketId, [['chassis-dimensionColor', finish], ['storage-dimensionCapacity', storage]], amount),
+    )
+
+  it('keeps one offer where a family charges the same for every finish', () => {
+    const collapsed = collapseUnpaidDimensions([
+      ...inEveryFinish('uk', '512gb', 1299),
+      ...inEveryFinish('uk', '1tb', 1499),
+    ])
+
+    expect(collapsed).toHaveLength(2)
+    expect(collapsed.map((o) => o.amount)).toEqual([1299, 1499])
+    expect(collapsed.flatMap((o) => o.dimensions.map((d) => d.field))).toEqual([
+      'storage-dimensionCapacity',
+      'storage-dimensionCapacity',
+    ])
+  })
+
+  /**
+   * The verdict has to be one verdict for the family, in every market. Apple's
+   * Irish education store really does charge two euros more for two of the
+   * iMac's colours; deciding market by market would leave Ireland keying its
+   * offers on a dimension nobody else carries, which is precisely how a market
+   * drops out of every comparison reading "not sold".
+   */
+  it('keeps a finish everywhere when one market charges for it', () => {
+    const collapsed = collapseUnpaidDimensions([
+      ...inEveryFinish('uk', '512gb', 1299),
+      build('ie', [['chassis-dimensionColor', 'silver'], ['storage-dimensionCapacity', '512gb']], 1501),
+      build('ie', [['chassis-dimensionColor', 'midnight'], ['storage-dimensionCapacity', '512gb']], 1499),
+    ])
+
+    expect(collapsed).toHaveLength(4)
+    expect(collapsed.every((o) => o.dimensions.some((d) => d.field === 'chassis-dimensionColor'))).toBe(true)
+  })
+
+  /**
+   * A Mac's chip never varies on its own -- it moves with its core count, so
+   * no two offers differ in the chip alone. That is not the same as nobody
+   * paying for it, and a rule that only asked "does this field ever change the
+   * price by itself" would delete the word "M6" from the page while merging
+   * nothing at all.
+   */
+  it('keeps a dimension that never varies alone', () => {
+    const chip = (name: string, cores: string, amount: number) =>
+      build('uk', [['processor-dimensionChip', name], ['processor-cpuCoreCount-gpuCoreCount', cores]], amount)
+    const collapsed = collapseUnpaidDimensions([chip('m6', '12-12', 899), chip('m5pro', '15-16', 1399)])
+
+    expect(collapsed).toHaveLength(2)
+    expect(collapsed[0].dimensions.map((d) => d.field)).toContain('processor-dimensionChip')
+  })
+
+  /**
+   * A field an offer does not carry is not a value that offer has. Apple's
+   * base iMac has no nano-texture option at all, so a third of that family's
+   * offers name no glass; reading the absence as a value pairs a machine that
+   * can take the option against one that cannot, and merges two different
+   * machines whenever they happen to cost the same.
+   */
+  it('does not read a missing option as one nobody pays for', () => {
+    const collapsed = collapseUnpaidDimensions([
+      build('uk', [['storage-dimensionCapacity', '256gb']], 1699),
+      build('uk', [['storage-dimensionCapacity', '256gb'], ['display-dimensionFinish', 'glossy']], 1699),
+    ])
+
+    expect(collapsed).toHaveLength(2)
+  })
+
+  it('changes nothing on a second pass', () => {
+    const once = collapseUnpaidDimensions([...inEveryFinish('uk', '512gb', 1299), ...inEveryFinish('uk', '1tb', 1499)])
+    expect(collapseUnpaidDimensions(once)).toEqual(once)
   })
 })
