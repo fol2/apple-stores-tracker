@@ -219,10 +219,17 @@ function catalogPriceResolver(
 ): (product: Record<string, any>) => number | undefined {
   const prices: Record<string, any> = data.displayValues?.prices ?? {}
 
+  // The same part number is priced once per US carrier, so the by-part
+  // fallback below has to ignore the contract lines or a SIM-free SKU whose
+  // own price key is missing would quietly take the carrier's cheaper price.
+  const simFree: string = data.displayValues?.carrierPolicyType?.UNLOCKED?.products
+  const isContractPrice = (entry: any) =>
+    typeof entry?.carrierProduct === 'string' && entry.carrierProduct !== simFree
+
   const byPart = new Map<string, number>()
   for (const entry of Object.values(prices)) {
     const amount = priceAmount(entry)
-    if (amount === undefined) continue
+    if (amount === undefined || isContractPrice(entry)) continue
     for (const part of entry?.validProducts ?? []) byPart.set(part, amount)
     if (typeof entry?.product === 'string' && !byPart.has(entry.product)) {
       byPart.set(entry.product, amount)
@@ -241,6 +248,24 @@ function catalogPriceResolver(
 /** Dimension values sit either in a nested object or directly on the product. */
 const dimensionSource = (product: Record<string, any>): Record<string, any> =>
   product.dimensions && typeof product.dimensions === 'object' ? product.dimensions : product
+
+/**
+ * Price the machine, not the contract.
+ *
+ * The US store lists a cellular device once per carrier and once SIM-free —
+ * an iPhone 17 is $799 on AT&T, T-Mobile or Verizon and $829 unlocked. Every
+ * other market quotes only the SIM-free handset, so carrying the carrier lines
+ * would key US offers on a step no other market has (which reads as "not sold"
+ * on every US row) or price a US iPhone against a contract the £799 it is
+ * compared with does not include. Apple labels the lines itself; keep the one
+ * that is the bare machine, and everything with no carrier step at all.
+ */
+const isSimFree = (product: Record<string, any>): boolean =>
+  typeof product.carrierPolicyType !== 'string' || product.carrierPolicyType === 'UNLOCKED'
+
+/** The SKUs a market-independent comparison can use. */
+const catalogProducts = (data: CatalogSelectionData): Record<string, any>[] =>
+  data.products.filter(isSimFree)
 
 /**
  * Drop dimensions that never move the price.
@@ -290,14 +315,15 @@ function priceRelevantFields(
 }
 
 function parseCatalogStructure(family: Family, data: CatalogSelectionData): FamilyStructure {
+  const products = catalogProducts(data)
   const fields = data.sections.map((s) => s.formFieldName)
-  const relevant = priceRelevantFields(fields, data.products, catalogPriceResolver(data))
+  const relevant = priceRelevantFields(fields, products, catalogPriceResolver(data))
 
   const dimensions = data.sections
     .filter((section) => relevant.includes(section.formFieldName))
     .map((section) => {
       const values = data.displayValues[section.formFieldName] ?? {}
-      const order = data.products
+      const order = products
         .map((p) => dimensionSource(p)[section.formFieldName])
         .filter((v, i, all): v is string => typeof v === 'string' && all.indexOf(v) === i)
       return {
@@ -336,7 +362,7 @@ export function parseCatalogOffers(
   const sourceUrl = storeUrl(market, family.route, store)
   const byConfig = new Map<string, Offer>()
 
-  for (const product of data.products) {
+  for (const product of catalogProducts(data)) {
     const amount = priceOf(product)
     if (amount === undefined) continue
 

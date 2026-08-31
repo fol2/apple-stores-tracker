@@ -313,3 +313,30 @@ describe('a market that adds a step only some SKUs answer', () => {
     expect(fields).toEqual(['dimensionCapacity', 'dimensionConnection'])
   })
 })
+
+/**
+ * The same market, one step further along. Apple's US store lists a cellular
+ * device once per carrier and once SIM-free — an iPhone 17 is $799 on AT&T,
+ * T-Mobile or Verizon and $829 unlocked — while every other market quotes only
+ * the SIM-free handset. Carrying the carrier lines keyed US offers on a step
+ * no other market has, so a US iPhone row read "not sold" too; taking their
+ * price instead would compare a contract with the bare £799 machine.
+ */
+describe('a market that sells the same handset on contract', () => {
+  const iphone = FAMILIES.find((f) => f.id === 'iphone-17')!
+  const us = marketById('us')!
+  const page = fixture('apple-us-iphone-17-select.html')
+
+  it('quotes the SIM-free machine, keyed as every other market keys it', () => {
+    expect(parseCatalogOffers(page, us, iphone).map((o) => `${o.configKey} ${o.amount}`)).toEqual([
+      'dimensionCapacity=256gb 829',
+      'dimensionCapacity=512gb 1029',
+    ])
+  })
+
+  it('does not offer the carrier as a specification', () => {
+    expect(parseFamilyStructure(page, iphone).dimensions.map((d) => d.field)).toEqual([
+      'dimensionCapacity',
+    ])
+  })
+})
