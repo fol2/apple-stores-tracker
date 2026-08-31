@@ -179,6 +179,22 @@ describe('dimensions nobody pays for', () => {
     expect(collapsed[0].dimensions.map((d) => d.field)).toContain('processor-dimensionChip')
   })
 
+  /**
+   * A field an offer does not carry is not a value that offer has. Apple's
+   * base iMac has no nano-texture option at all, so a third of that family's
+   * offers name no glass; reading the absence as a value pairs a machine that
+   * can take the option against one that cannot, and merges two different
+   * machines whenever they happen to cost the same.
+   */
+  it('does not read a missing option as one nobody pays for', () => {
+    const collapsed = collapseUnpaidDimensions([
+      build('uk', [['storage-dimensionCapacity', '256gb']], 1699),
+      build('uk', [['storage-dimensionCapacity', '256gb'], ['display-dimensionFinish', 'glossy']], 1699),
+    ])
+
+    expect(collapsed).toHaveLength(2)
+  })
+
   it('changes nothing on a second pass', () => {
     const once = collapseUnpaidDimensions([...inEveryFinish('uk', '512gb', 1299), ...inEveryFinish('uk', '1tb', 1499)])
     expect(collapseUnpaidDimensions(once)).toEqual(once)
