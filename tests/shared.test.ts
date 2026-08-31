@@ -106,6 +106,24 @@ describe('compare', () => {
     expect(notSold.displayAmount).toBeNull()
   })
 
+  /**
+   * Two silences that look identical in a table and mean opposite things. A
+   * market Apple does not sell in is an answer; a market whose page did not
+   * answer is a gap in what we collected, and calling it "not sold" states a
+   * fact about Apple's catalogue that nothing observed. It is also how a
+   * scraper that quietly stops working goes on looking like a product fact.
+   */
+  it('separates a market Apple does not sell in from one that was not read', () => {
+    const { rows } = compare(offers, fx, { unreadMarkets: ['sg'] })
+    expect(rows.find((r) => r.market.id === 'sg')!.unread).toBe(true)
+    expect(rows.find((r) => r.market.id === 'ca')!.unread).toBe(false)
+  })
+
+  it('never calls a market unread when it has a price', () => {
+    const { rows } = compare(offers, fx, { unreadMarkets: ['uk'] })
+    expect(rows.find((r) => r.market.id === 'uk')!.unread).toBe(false)
+  })
+
   it('ranks markets with no rate last, but still shows them', () => {
     const { rows, covered } = compare([...offers, offer('th', 'THB', 46_900)], fx)
     expect(covered).toBe(4)

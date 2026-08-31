@@ -86,7 +86,11 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
 
                   {/* What the hidden columns would have said, for narrow screens. */}
                   <span className="tnum mt-0.5 block text-xs text-soft sm:hidden">
-                    {row.offer ? formatLocal(row.offer.amount, row.offer.currency) : 'not sold here'}
+                    {row.offer
+                      ? formatLocal(row.offer.amount, row.offer.currency)
+                      : row.unread
+                        ? 'no answer here'
+                        : 'not sold here'}
                     {row.market.pricesExcludeTax && <span className="text-high"> +tax</span>}
                     {showRefunds && row.policy.available && (
                       <span className={row.policy.appleConfirmed ? 'text-low' : ''}>
@@ -110,6 +114,10 @@ export function MarketTable({ rows, homeMarketId, showRefunds, currency }: Props
                         </span>
                       )}
                     </>
+                  ) : row.unread ? (
+                    <span title="Apple's page for this product did not answer in this market when prices were collected, so whether it is sold here is unknown.">
+                      no answer
+                    </span>
                   ) : (
                     <span title="Apple does not list this configuration in this market.">
                       not sold

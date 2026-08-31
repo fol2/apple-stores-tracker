@@ -44,14 +44,27 @@ function Prices() {
     [data, familyId, wanted, priority],
   )
 
+  /**
+   * Markets where this family's retail collection failed. Their rows have no
+   * price for a reason that is ours, not Apple's, and the table has to say so.
+   */
+  const unreadMarkets = useMemo(
+    () =>
+      (data?.errors ?? [])
+        .filter((e) => e.familyId === familyId && e.store !== 'education')
+        .map((e) => e.marketId),
+    [data, familyId],
+  )
+
   const comparison = useMemo(() => {
     if (!data || !resolved || !data.fx) return null
     return compare(offersFor(data.offers, familyId, resolved.configKey), data.fx, {
       applyRefunds: showRefunds,
       currency,
       educationMarketId,
+      unreadMarkets,
     })
-  }, [data, resolved, familyId, showRefunds, currency, educationMarketId])
+  }, [data, resolved, familyId, showRefunds, currency, educationMarketId, unreadMarkets])
 
   const chooseSpec = (field: string, value: string) => {
     setWanted((current) => ({ ...current, [field]: value }))
