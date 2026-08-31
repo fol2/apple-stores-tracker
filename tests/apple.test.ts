@@ -6,6 +6,7 @@ import {
   expandVariant,
   extractJsonAfter,
   isExcludedDimension,
+  parseCatalogOffers,
   parseFamilyStructure,
   parseVariantPricing,
 } from '../src/scrape/apple'
@@ -275,5 +276,67 @@ describe('the exclusion rule matches where Apple actually puts the name', () => 
 
   it.each(cases)('%s excluded: %s', (field, excluded) => {
     expect(isExcludedDimension(field)).toBe(excluded)
+  })
+})
+
+/**
+ * The US store asks which carrier a cellular iPad is for, and only the
+ * cellular SKUs carry that field — so a Wi-Fi SKU and its cellular twin
+ * disagreed on two fields at once. The relevance test grouped on all of them,
+ * never compared a Wi-Fi price with a cellular one, and concluded connectivity
+ * was free: all 96 SKUs collapsed onto 12 Wi-Fi configurations keyed without
+ * `dimensionConnection`. No other market keys them that way, so every US row
+ * on every iPad read "not sold" for a machine Apple sells in the US.
+ */
+describe('a market that adds a step only some SKUs answer', () => {
+  const ipadPro = FAMILIES.find((f) => f.id === 'ipad-pro')!
+  const us = marketById('us')!
+  const page = fixture('apple-us-ipad-pro-select.html')
+  const offers = parseCatalogOffers(page, us, ipadPro)
+
+  it('keeps connectivity, which costs $200', () => {
+    expect(offers.map((o) => `${o.configKey} ${o.amount}`)).toEqual([
+      'dimensionCapacity=256gb|dimensionConnection=wifi 1199',
+      'dimensionCapacity=512gb|dimensionConnection=wifi 1399',
+      'dimensionCapacity=256gb|dimensionConnection=wificell 1399',
+      'dimensionCapacity=512gb|dimensionConnection=wificell 1599',
+    ])
+  })
+
+  /**
+   * The carrier itself is not part of the machine: AT&T, Verizon and unlocked
+   * are one iPad at one price. Keeping it would key US offers on a field no
+   * other market has, which is the same "not sold" by another route.
+   */
+  it('leaves the carrier and the colour out of the key', () => {
+    const fields = parseFamilyStructure(page, ipadPro).dimensions.map((d) => d.field)
+    expect(fields).toEqual(['dimensionCapacity', 'dimensionConnection'])
+  })
+})
+
+/**
+ * The same market, one step further along. Apple's US store lists a cellular
+ * device once per carrier and once SIM-free — an iPhone 17 is $799 on AT&T,
+ * T-Mobile or Verizon and $829 unlocked — while every other market quotes only
+ * the SIM-free handset. Carrying the carrier lines keyed US offers on a step
+ * no other market has, so a US iPhone row read "not sold" too; taking their
+ * price instead would compare a contract with the bare £799 machine.
+ */
+describe('a market that sells the same handset on contract', () => {
+  const iphone = FAMILIES.find((f) => f.id === 'iphone-17')!
+  const us = marketById('us')!
+  const page = fixture('apple-us-iphone-17-select.html')
+
+  it('quotes the SIM-free machine, keyed as every other market keys it', () => {
+    expect(parseCatalogOffers(page, us, iphone).map((o) => `${o.configKey} ${o.amount}`)).toEqual([
+      'dimensionCapacity=256gb 829',
+      'dimensionCapacity=512gb 1029',
+    ])
+  })
+
+  it('does not offer the carrier as a specification', () => {
+    expect(parseFamilyStructure(page, iphone).dimensions.map((d) => d.field)).toEqual([
+      'dimensionCapacity',
+    ])
   })
 })

@@ -219,10 +219,17 @@ function catalogPriceResolver(
 ): (product: Record<string, any>) => number | undefined {
   const prices: Record<string, any> = data.displayValues?.prices ?? {}
 
+  // The same part number is priced once per US carrier, so the by-part
+  // fallback below has to ignore the contract lines or a SIM-free SKU whose
+  // own price key is missing would quietly take the carrier's cheaper price.
+  const simFree: string = data.displayValues?.carrierPolicyType?.UNLOCKED?.products
+  const isContractPrice = (entry: any) =>
+    typeof entry?.carrierProduct === 'string' && entry.carrierProduct !== simFree
+
   const byPart = new Map<string, number>()
   for (const entry of Object.values(prices)) {
     const amount = priceAmount(entry)
-    if (amount === undefined) continue
+    if (amount === undefined || isContractPrice(entry)) continue
     for (const part of entry?.validProducts ?? []) byPart.set(part, amount)
     if (typeof entry?.product === 'string' && !byPart.has(entry.product)) {
       byPart.set(entry.product, amount)
@@ -243,6 +250,24 @@ const dimensionSource = (product: Record<string, any>): Record<string, any> =>
   product.dimensions && typeof product.dimensions === 'object' ? product.dimensions : product
 
 /**
+ * Price the machine, not the contract.
+ *
+ * The US store lists a cellular device once per carrier and once SIM-free —
+ * an iPhone 17 is $799 on AT&T, T-Mobile or Verizon and $829 unlocked. Every
+ * other market quotes only the SIM-free handset, so carrying the carrier lines
+ * would key US offers on a step no other market has (which reads as "not sold"
+ * on every US row) or price a US iPhone against a contract the £799 it is
+ * compared with does not include. Apple labels the lines itself; keep the one
+ * that is the bare machine, and everything with no carrier step at all.
+ */
+const isSimFree = (product: Record<string, any>): boolean =>
+  typeof product.carrierPolicyType !== 'string' || product.carrierPolicyType === 'UNLOCKED'
+
+/** The SKUs a market-independent comparison can use. */
+const catalogProducts = (data: CatalogSelectionData): Record<string, any>[] =>
+  data.products.filter(isSimFree)
+
+/**
  * Drop dimensions that never move the price.
  *
  * Colour is the usual case — 21 iPhone SKUs are 7 hardware configurations in
@@ -250,36 +275,55 @@ const dimensionSource = (product: Record<string, any>): Record<string, any> =>
  * special case, because Apple has previously charged for finishes and may
  * again. Two SKUs differing in exactly one dimension at different prices make
  * that dimension price-relevant.
+ *
+ * "Differing in exactly one" has to ignore a field the other SKU does not
+ * carry at all. The US store adds a carrier step that only cellular iPads
+ * name, so a Wi-Fi SKU and its cellular twin disagree on two fields at once;
+ * counting the absent carrier as a disagreement left no pair to compare, and
+ * connectivity looked free. Every US iPad then collapsed onto its Wi-Fi twin
+ * under a key no other market's Wi-Fi offer shared, which is why a US row read
+ * "not sold" for an iPad Apple plainly sells.
  */
 function priceRelevantFields(
   fields: string[],
   products: Record<string, any>[],
   priceOf: (product: Record<string, any>) => number | undefined,
 ): string[] {
-  return fields.filter((field) => {
-    const groups = new Map<string, Set<number>>()
-    for (const product of products) {
-      const price = priceOf(product)
-      if (price === undefined) continue
-      const source = dimensionSource(product)
-      const key = fields.filter((f) => f !== field).map((f) => source[f]).join('|')
-      const seen = groups.get(key) ?? new Set<number>()
-      seen.add(price)
-      groups.set(key, seen)
-    }
-    return [...groups.values()].some((seen) => seen.size > 1)
-  })
+  const priced = products
+    .map((product) => ({ source: dimensionSource(product), price: priceOf(product) }))
+    .filter((p): p is { source: Record<string, any>; price: number } => p.price !== undefined)
+
+  const agreesElsewhere = (a: Record<string, any>, b: Record<string, any>, field: string) =>
+    fields.every(
+      (f) => f === field || a[f] === b[f] || a[f] === undefined || b[f] === undefined,
+    )
+
+  // ponytail: O(n²) over one family's SKUs — 96 on the largest iPad page.
+  // Bucket by the fields both SKUs carry if a family ever gets big enough.
+  return fields.filter((field) =>
+    priced.some((a, i) =>
+      priced.slice(i + 1).some(
+        (b) =>
+          a.price !== b.price &&
+          typeof a.source[field] === 'string' &&
+          typeof b.source[field] === 'string' &&
+          a.source[field] !== b.source[field] &&
+          agreesElsewhere(a.source, b.source, field),
+      ),
+    ),
+  )
 }
 
 function parseCatalogStructure(family: Family, data: CatalogSelectionData): FamilyStructure {
+  const products = catalogProducts(data)
   const fields = data.sections.map((s) => s.formFieldName)
-  const relevant = priceRelevantFields(fields, data.products, catalogPriceResolver(data))
+  const relevant = priceRelevantFields(fields, products, catalogPriceResolver(data))
 
   const dimensions = data.sections
     .filter((section) => relevant.includes(section.formFieldName))
     .map((section) => {
       const values = data.displayValues[section.formFieldName] ?? {}
-      const order = data.products
+      const order = products
         .map((p) => dimensionSource(p)[section.formFieldName])
         .filter((v, i, all): v is string => typeof v === 'string' && all.indexOf(v) === i)
       return {
@@ -318,7 +362,7 @@ export function parseCatalogOffers(
   const sourceUrl = storeUrl(market, family.route, store)
   const byConfig = new Map<string, Offer>()
 
-  for (const product of data.products) {
+  for (const product of catalogProducts(data)) {
     const amount = priceOf(product)
     if (amount === undefined) continue
 
