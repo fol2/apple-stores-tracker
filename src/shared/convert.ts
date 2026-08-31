@@ -12,6 +12,16 @@ export interface MarketPrice {
   displayAmount: number | null
   /** Whether this row is quoted from Apple's education store. */
   isEducation: boolean
+  /**
+   * Whether this market has no price because collection failed here, rather
+   * than because Apple does not sell the configuration.
+   *
+   * The two look identical in a table and mean opposite things. A market Apple
+   * does not sell in is an answer; a market whose page did not answer is a gap
+   * in what we know, and presenting it as "not sold" states a fact about
+   * Apple's catalogue that nothing observed.
+   */
+  unread: boolean
   /** What the same build costs at retail, on an education row. */
   retailDisplayAmount?: number | null
 }
@@ -40,6 +50,11 @@ export interface CompareOptions {
    * quoting education prices everywhere would describe nobody's situation.
    */
   educationMarketId?: string | null
+  /**
+   * Markets whose collection failed for this family, so their silence is ours
+   * rather than Apple's.
+   */
+  unreadMarkets?: Iterable<string>
 }
 
 /**
@@ -93,7 +108,13 @@ export function formatIn(amount: number, currency: string, locale = 'en-GB'): st
  * them would make coverage gaps look like availability.
  */
 export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = {}): Comparison {
-  const { applyRefunds = false, currency = BASE_CURRENCY, educationMarketId = null } = options
+  const {
+    applyRefunds = false,
+    currency = BASE_CURRENCY,
+    educationMarketId = null,
+    unreadMarkets = [],
+  } = options
+  const unread = new Set(unreadMarkets)
 
   const toRow = (market: Market, offer: Offer | undefined): MarketPrice => {
     const policy = refundPolicy(market.id)
@@ -108,6 +129,7 @@ export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = 
           ? null
           : convertBetween(localAmount, offer!.currency, currency, fx),
       isEducation: offer?.store === 'education',
+      unread: !offer && unread.has(market.id),
     }
   }
 

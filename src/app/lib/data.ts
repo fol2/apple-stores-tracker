@@ -26,7 +26,7 @@ export interface SnapshotResponse {
     errors: { category: RefurbCategory; message: string }[]
   } | null
   offers: Offer[]
-  errors: { marketId: string; familyId: string; message: string }[]
+  errors: { marketId: string; familyId: string; store?: 'retail' | 'education'; message: string }[]
 }
 
 export async function loadSnapshot(): Promise<SnapshotResponse> {

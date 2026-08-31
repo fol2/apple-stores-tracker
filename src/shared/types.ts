@@ -58,8 +58,11 @@ export interface Snapshot {
    * them back through `hydrateOffers` -- see `shared/offers.ts` for why.
    */
   offers: StoredOffer[]
-  /** Families that failed to collect, with the reason. */
-  errors: { marketId: string; familyId: string; message: string }[]
+  /**
+   * Families that failed to collect, with the reason. `store` is absent on
+   * snapshots written before education prices existed.
+   */
+  errors: { marketId: string; familyId: string; store?: 'retail' | 'education'; message: string }[]
 }
 
 /** Base-currency conversion rates, keyed by the market's currency. */
