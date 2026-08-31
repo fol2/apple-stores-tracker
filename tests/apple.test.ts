@@ -6,6 +6,7 @@ import {
   expandVariant,
   extractJsonAfter,
   isExcludedDimension,
+  parseCatalogOffers,
   parseFamilyStructure,
   parseVariantPricing,
 } from '../src/scrape/apple'
@@ -275,5 +276,40 @@ describe('the exclusion rule matches where Apple actually puts the name', () => 
 
   it.each(cases)('%s excluded: %s', (field, excluded) => {
     expect(isExcludedDimension(field)).toBe(excluded)
+  })
+})
+
+/**
+ * The US store asks which carrier a cellular iPad is for, and only the
+ * cellular SKUs carry that field — so a Wi-Fi SKU and its cellular twin
+ * disagreed on two fields at once. The relevance test grouped on all of them,
+ * never compared a Wi-Fi price with a cellular one, and concluded connectivity
+ * was free: all 96 SKUs collapsed onto 12 Wi-Fi configurations keyed without
+ * `dimensionConnection`. No other market keys them that way, so every US row
+ * on every iPad read "not sold" for a machine Apple sells in the US.
+ */
+describe('a market that adds a step only some SKUs answer', () => {
+  const ipadPro = FAMILIES.find((f) => f.id === 'ipad-pro')!
+  const us = marketById('us')!
+  const page = fixture('apple-us-ipad-pro-select.html')
+  const offers = parseCatalogOffers(page, us, ipadPro)
+
+  it('keeps connectivity, which costs $200', () => {
+    expect(offers.map((o) => `${o.configKey} ${o.amount}`)).toEqual([
+      'dimensionCapacity=256gb|dimensionConnection=wifi 1199',
+      'dimensionCapacity=512gb|dimensionConnection=wifi 1399',
+      'dimensionCapacity=256gb|dimensionConnection=wificell 1399',
+      'dimensionCapacity=512gb|dimensionConnection=wificell 1599',
+    ])
+  })
+
+  /**
+   * The carrier itself is not part of the machine: AT&T, Verizon and unlocked
+   * are one iPad at one price. Keeping it would key US offers on a field no
+   * other market has, which is the same "not sold" by another route.
+   */
+  it('leaves the carrier and the colour out of the key', () => {
+    const fields = parseFamilyStructure(page, ipadPro).dimensions.map((d) => d.field)
+    expect(fields).toEqual(['dimensionCapacity', 'dimensionConnection'])
   })
 })

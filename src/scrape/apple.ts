@@ -250,25 +250,43 @@ const dimensionSource = (product: Record<string, any>): Record<string, any> =>
  * special case, because Apple has previously charged for finishes and may
  * again. Two SKUs differing in exactly one dimension at different prices make
  * that dimension price-relevant.
+ *
+ * "Differing in exactly one" has to ignore a field the other SKU does not
+ * carry at all. The US store adds a carrier step that only cellular iPads
+ * name, so a Wi-Fi SKU and its cellular twin disagree on two fields at once;
+ * counting the absent carrier as a disagreement left no pair to compare, and
+ * connectivity looked free. Every US iPad then collapsed onto its Wi-Fi twin
+ * under a key no other market's Wi-Fi offer shared, which is why a US row read
+ * "not sold" for an iPad Apple plainly sells.
  */
 function priceRelevantFields(
   fields: string[],
   products: Record<string, any>[],
   priceOf: (product: Record<string, any>) => number | undefined,
 ): string[] {
-  return fields.filter((field) => {
-    const groups = new Map<string, Set<number>>()
-    for (const product of products) {
-      const price = priceOf(product)
-      if (price === undefined) continue
-      const source = dimensionSource(product)
-      const key = fields.filter((f) => f !== field).map((f) => source[f]).join('|')
-      const seen = groups.get(key) ?? new Set<number>()
-      seen.add(price)
-      groups.set(key, seen)
-    }
-    return [...groups.values()].some((seen) => seen.size > 1)
-  })
+  const priced = products
+    .map((product) => ({ source: dimensionSource(product), price: priceOf(product) }))
+    .filter((p): p is { source: Record<string, any>; price: number } => p.price !== undefined)
+
+  const agreesElsewhere = (a: Record<string, any>, b: Record<string, any>, field: string) =>
+    fields.every(
+      (f) => f === field || a[f] === b[f] || a[f] === undefined || b[f] === undefined,
+    )
+
+  // ponytail: O(n²) over one family's SKUs — 96 on the largest iPad page.
+  // Bucket by the fields both SKUs carry if a family ever gets big enough.
+  return fields.filter((field) =>
+    priced.some((a, i) =>
+      priced.slice(i + 1).some(
+        (b) =>
+          a.price !== b.price &&
+          typeof a.source[field] === 'string' &&
+          typeof b.source[field] === 'string' &&
+          a.source[field] !== b.source[field] &&
+          agreesElsewhere(a.source, b.source, field),
+      ),
+    ),
+  )
 }
 
 function parseCatalogStructure(family: Family, data: CatalogSelectionData): FamilyStructure {
