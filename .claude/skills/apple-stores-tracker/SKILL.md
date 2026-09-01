@@ -39,7 +39,7 @@ npm run ci
 
 ## Price identity and source invariants
 
-- One comparison row represents the same stable `configKey` in each market. Never compare labels, part numbers, or merely similar configurations as though they were identical — and never let the same configuration key unalike. Both directions break the comparison; only the second one hides, because a market that produces a key no other market produces simply reads as "not sold".
+- One comparison row represents the same stable `configKey` in each market. Never compare labels, part numbers, or merely similar configurations as though they were identical — and never let the same configuration be keyed unalike. Both directions break the comparison; only the second one hides, because a market that produces a key no other market produces simply reads as "not sold".
 - A configuration's shape is decided once for the whole catalogue. The dimension set comes from the structure discovered once and reused for every market; a market's own page supplies that market's prices and labels, never the identity. Re-deriving the shape from the page being priced is what made every US iPad read "not sold".
 - Whether a dimension is price-relevant is judged per family and globally: prices are compared only inside one market and store, but the verdict holds for every market. A dimension anyone charges for anywhere is carried everywhere. A field a SKU does not carry is absent, which is not the same as an option that costs nothing.
 - Preserve market, store (`retail` or `education`), local currency, amount, dimensions, part number, and source URL provenance.
