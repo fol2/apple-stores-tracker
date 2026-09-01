@@ -40,6 +40,10 @@ export function CurrencyPicker({ currency, currencies, onChange }: CurrencyProps
       ))}
 
       <select
+        // The heading beside it is a span, not a label, because the two pinned
+        // buttons share it -- so this menu has to name itself or a screen
+        // reader announces only "More...", with nothing to say what it picks.
+        aria-label="Show prices in another currency"
         // Shows the current choice only when it is not one of the pinned two,
         // so the buttons and the menu never both look selected.
         value={rest.includes(currency) ? currency : ''}
