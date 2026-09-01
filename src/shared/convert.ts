@@ -143,13 +143,20 @@ export function compare(offers: Offer[], fx: FxRates, options: CompareOptions = 
   // The claimed market gets a second row rather than a substituted one, so the
   // discount is visible as a gap instead of silently changing a number. Only
   // one market can be claimed: you can only be a student in one country.
+  //
+  // A second row is worth its place only when the two prices differ. Apple's
+  // education store carries plenty of products at exactly the retail price --
+  // every pair of AirPods, for one -- and listing the market twice at one
+  // number, badged as a student price, offers a discount that does not exist.
+  // The retail row already says what a student would pay.
   if (educationMarketId) {
     const market = MARKETS.find((m) => m.id === educationMarketId)
     const education = offers.find(
       (o) => o.marketId === educationMarketId && o.store === 'education',
     )
-    if (market && education) {
-      const retailRow = rows.find((r) => r.market.id === educationMarketId)
+    const retailRow = rows.find((r) => r.market.id === educationMarketId)
+    const differs = education && education.amount !== retailRow?.offer?.amount
+    if (market && education && differs) {
       rows.push({ ...toRow(market, education), retailDisplayAmount: retailRow?.displayAmount ?? null })
     }
   }
