@@ -13,6 +13,8 @@ Use this precedence:
 
 Historical commits, closed issues, PR narratives, logs, generated files, and rejected experiments are past evidence, not current instructions.
 
+`docs/solutions/` records solved problems — bugs, practices and workflow patterns — one file per learning, organised by category with YAML frontmatter (`module`, `tags`, `problem_type`). `CONCEPTS.md` defines the project's shared domain vocabulary. Both are past evidence rather than current instruction, and are worth searching before working in an area either documents.
+
 Inspect the task contract, current head, changed surface, nearby tests, and exact dependency radius. Keep one task capsule: outcome, non-goals, constraints, acceptance, affected paths, proof map, decisions, exact head, and next action. Do not preload the whole repository, all fixtures, reference repositories, or prior transcripts.
 
 ## Four-rule objective
