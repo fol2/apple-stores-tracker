@@ -33,7 +33,10 @@ cost three requests, not eighty-four.
 **Catalogue** (iPhone, iPad, Watch, Vision, AirPods, displays, TV & Home). A fixed set of
 SKUs whose prices are already embedded in the select page, so pricing a market is one
 request per family. Dimensions that never change the price — colour, almost always — are
-collapsed, so 21 iPhone SKUs become 7 configurations.
+collapsed, so 21 iPhone SKUs become 7 configurations. The verdict is one verdict for the
+whole catalogue: a finish Apple charges for in any market is carried in every market,
+since the market that charges would otherwise key its machines unlike the rest and drop
+out of the comparison entirely.
 
 `apple.com/robots.txt` disallows only `/*shop/browse/overlay/*`; these paths are permitted.
 The scraper identifies itself, runs three requests at a time, and shares one cool-off
@@ -79,8 +82,8 @@ decode and `JSON.stringify`, with almost no interpreted JavaScript between them.
 due, so the Worker re-reads it on the request path the first time someone asks after that
 moment, serving the quote it already holds and replacing it behind the response.
 
-**KV** holds the snapshot — one blob, read on every request, cached at the edge. At 22,442
-offers it is 11.9MB packed, and 0.16MB over the wire: the data is repetitive enough that
+**KV** holds the snapshot — one blob, read on every request, cached at the edge. At 16,592
+offers it is 8.6MB packed, and 0.16MB over the wire: the data is repetitive enough that
 compression does the work a smaller payload would.
 **D1** holds history, and only rows that *changed*: Apple prices barely move, so writing
 every configuration every day would be ~90k rows to record that nothing happened.
