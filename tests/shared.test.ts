@@ -238,6 +238,28 @@ describe('education pricing', () => {
     expect(uk.find((r) => !r.isEducation)!.offer!.amount).toBe(899)
   })
 
+  /**
+   * Apple's education store carries plenty of products at exactly the retail
+   * price -- every pair of AirPods, for one. Listing the market twice at one
+   * number, the second badged as a student price, offers a discount that does
+   * not exist; the retail row already says what a student would pay.
+   */
+  it('adds no second row when the student price is the retail price', () => {
+    const sameEverywhere = [offer('uk', 'GBP', 899), offer('uk', 'GBP', 899, 'education')]
+    const { rows } = compare(sameEverywhere, fx, { educationMarketId: 'uk' })
+    expect(rows.filter((r) => r.market.id === 'uk')).toHaveLength(1)
+    expect(rows.some((r) => r.isEducation)).toBe(false)
+  })
+
+  /** An education-only build is still an offer, and the only one there is. */
+  it('shows a student price with no retail twin', () => {
+    const { rows } = compare([offer('uk', 'GBP', 799, 'education')], fx, { educationMarketId: 'uk' })
+    const uk = rows.filter((r) => r.market.id === 'uk')
+    expect(uk).toHaveLength(2)
+    expect(uk.find((r) => r.isEducation)!.offer!.amount).toBe(799)
+    expect(uk.find((r) => !r.isEducation)!.offer).toBeUndefined()
+  })
+
   it('claims one market only, since you study in one country', () => {
     const { rows } = compare(offers, fx, { educationMarketId: 'uk' })
     expect(rows.filter((r) => r.isEducation).map((r) => r.market.id)).toEqual(['uk'])

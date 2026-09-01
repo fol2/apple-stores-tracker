@@ -130,6 +130,15 @@ function Prices() {
     if (comparison.rows.some((r) => r.isEducation)) return null
     const collected = data.offers.some((o) => o.store === 'education')
     if (!collected) return 'Education prices have not been collected yet. They appear after the next full run.'
+    // A student price identical to the retail one gets no row of its own, so
+    // this is the only place that can say the store was asked and answered.
+    const sameAsRetail = offersFor(data.offers, familyId, resolved.configKey).some(
+      (o) =>
+        o.marketId === educationMarketId &&
+        o.store === 'education' &&
+        o.amount === comparison.rows.find((r) => r.market.id === educationMarketId)?.offer?.amount,
+    )
+    if (sameAsRetail) return 'Apple’s education store charges the same as its retail store for this build.'
     const marketHasAny = data.offers.some(
       (o) => o.store === 'education' && o.marketId === educationMarketId,
     )
