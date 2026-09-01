@@ -160,7 +160,7 @@ Evidence must observe the property claimed:
 | Claim | Decisive evidence |
 |---|---|
 | selector/parser shape | captured fixture and focused parser test |
-| exact cross-market identity | `configKey` unit/property test |
+| exact cross-market identity | `configKey` agreement test over captured pages from more than one market — a single-market fixture cannot observe a key disagreement |
 | conversion/refund/history logic | boundary-focused deterministic unit tests |
 | sweep request safety | planning and `RequestBudget` tests for the worst step, not the average |
 | scheduler behaviour | deterministic time-controlled schedule tests |

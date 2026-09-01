@@ -39,13 +39,15 @@ npm run ci
 
 ## Price identity and source invariants
 
-- One comparison row represents the same stable `configKey` in each market. Never compare labels, part numbers, or merely similar configurations as though they were identical.
+- One comparison row represents the same stable `configKey` in each market. Never compare labels, part numbers, or merely similar configurations as though they were identical — and never let the same configuration key unalike. Both directions break the comparison; only the second one hides, because a market that produces a key no other market produces simply reads as "not sold".
+- A configuration's shape is decided once for the whole catalogue. The dimension set comes from the structure discovered once and reused for every market; a market's own page supplies that market's prices and labels, never the identity. Re-deriving the shape from the page being priced is what made every US iPad read "not sold".
+- Whether a dimension is price-relevant is judged per family and globally: prices are compared only inside one market and store, but the verdict holds for every market. A dimension anyone charges for anywhere is carried everywhere. A field a SKU does not carry is absent, which is not the same as an option that costs nothing.
 - Preserve market, store (`retail` or `education`), local currency, amount, dimensions, part number, and source URL provenance.
 - Build-to-order families use one configurator request per chip/model variant and expand additive deltas into the hardware matrix. Catalogue families read embedded market-page prices.
 - Do not include bundled software as hardware configuration dimensions.
 - Education prices remain a distinct store identity. Do not quietly replace retail price, and do not request known education-ineligible families such as iPhone.
 - Second-hand listings are matched, never keyed: the refurbished grid's facets and a configuration's dimensions overlap without either containing the other. A match must pin every facet both sides name, check the processor against the listing title, and report the price-driving facets it could not pin. Never present an unpinned match as the same machine or subtract its price as a saving without that qualification.
-- Partial errors remain visible. Never manufacture completeness by carrying an unrelated offer into a missing market/family/store result.
+- Partial errors remain visible. Never manufacture completeness by carrying an unrelated offer into a missing market/family/store result, and never let a failed read render as a product fact: a market whose page did not answer is unread, not a market Apple does not sell in.
 
 ## Provider and request-budget invariants
 
