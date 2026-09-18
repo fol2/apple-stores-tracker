@@ -151,6 +151,22 @@ if (baseline) console.log('no history to build on; taking this snapshot as the b
 
 const points = changedPoints(baseline ? [] : (before?.offers ?? []), offers, local.collectedAt.slice(0, 10))
 console.log(`${points.length} price changes to record`)
+
+/**
+ * D1 takes a file of statements, not bound parameters. Batching lives in
+ * `historyStatements`; this only groups those into files the execute call
+ * can ingest.
+ */
+function writeHistory(rows: PricePoint[]): void {
+  for (let offset = 0; offset < rows.length; offset += ROWS_PER_FILE) {
+    const chunk = rows.slice(offset, offset + ROWS_PER_FILE)
+    const file = join(scratch, `history-${offset}.sql`)
+    writeFileSync(file, historyStatements(chunk).join('\n'))
+    wrangler('d1', 'execute', 'price-history', '--remote', '--yes', '--file', file)
+    console.log(`  wrote ${chunk.length} history rows`)
+  }
+}
+
 // Written before the prices they describe: a failure here must not leave the
 // site publishing a move that nothing charted.
 if (points.length > 0) writeHistory(points)
