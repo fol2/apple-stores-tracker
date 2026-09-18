@@ -26,7 +26,7 @@ function localSnapshot(): Plugin {
               baseCurrency: BASE_CURRENCY,
               markets: MARKETS,
               categories: CATEGORIES,
-              families: FAMILIES,
+              families: local.families ?? FAMILIES,
               refunds: REFUND_POLICIES,
               fx: local.fx,
               refurb: local.refurb ?? null,

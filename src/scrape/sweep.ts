@@ -1,6 +1,7 @@
 import type { DimensionValue, FamilyStructure, Offer } from '../shared/types'
 import { storeUrl, type Market, type Store } from '../shared/markets'
-import { FAMILIES, type Family } from '../shared/families'
+import { CATEGORY_INDEXES, FAMILIES, type Family } from '../shared/families'
+import { parseListingFamilies } from './discover'
 import {
   ctoUrl,
   expandVariant,
@@ -105,7 +106,7 @@ export const get = async (url: string, budget: RequestBudget): Promise<Response>
 const POOL_SIZE = 3
 const PACE_MS = 150
 
-async function pooled<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R[]> {
+async function pooled<T, R>(items: readonly T[], run: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let next = 0
   const workers = Array.from({ length: Math.min(POOL_SIZE, items.length) }, async () => {
@@ -128,8 +129,43 @@ export interface CollectionError {
 
 export interface FamilyStructures {
   discoveredAt: string
+  families: Family[]
   structures: FamilyStructure[]
   errors: CollectionError[]
+}
+
+/**
+ * Current buy-flow families, from Apple's own category listing.
+ *
+ * A shop index that 404s falls through to the next entry point for that
+ * category (the AirPods marketing page, for example). If every listing for
+ * a category fails, the compile-time seed for that category is kept so a
+ * missing index cannot look like those families vanished.
+ */
+export async function discoverFamilies(
+  market: Market,
+  budget: RequestBudget,
+): Promise<{ families: Family[] }> {
+  const families: Family[] = []
+
+  for (const { categoryId, routes } of CATEGORY_INDEXES) {
+    let listed: Family[] | null = null
+    for (const route of routes) {
+      try {
+        const html = await (await get(storeUrl(market, route), budget)).text()
+        const found = parseListingFamilies(html, categoryId)
+        if (found.length > 0) {
+          listed = found
+          break
+        }
+      } catch {
+        // A shop index that 404s is why the category has a fallback route.
+      }
+    }
+    families.push(...(listed ?? FAMILIES.filter((family) => family.categoryId === categoryId)))
+  }
+
+  return { families }
 }
 
 /**
@@ -140,11 +176,12 @@ export interface FamilyStructures {
 export async function discoverStructures(
   market: Market,
   budget: RequestBudget,
+  families: readonly Family[] = FAMILIES,
 ): Promise<FamilyStructures> {
   const structures: FamilyStructure[] = []
   const errors: CollectionError[] = []
 
-  await pooled(FAMILIES, async (family) => {
+  await pooled(families, async (family) => {
     try {
       const html = await (await get(storeUrl(market, family.route), budget)).text()
       structures.push(parseFamilyStructure(html, family))
@@ -153,7 +190,7 @@ export async function discoverStructures(
     }
   })
 
-  return { discoveredAt: new Date().toISOString(), structures, errors }
+  return { discoveredAt: new Date().toISOString(), families: [...families], structures, errors }
 }
 
 export interface MarketCollection {
@@ -175,6 +212,7 @@ export async function collectFamilies(
   store: Store,
   structures: FamilyStructure[],
   budget: RequestBudget,
+  families: readonly Family[] = FAMILIES,
 ): Promise<MarketCollection> {
   const offers: Offer[] = []
   const errors: CollectionError[] = []
@@ -184,7 +222,7 @@ export async function collectFamilies(
     | { kind: 'catalog'; family: Family; structure: FamilyStructure }
 
   const jobs = structures.flatMap((structure): Job[] => {
-    const family = FAMILIES.find((f) => f.id === structure.familyId)
+    const family = families.find((f) => f.id === structure.familyId)
     if (!family) return []
     if (structure.kind === 'catalog') return [{ kind: 'catalog', family, structure }]
     return structure.variants.map((variant) => ({ kind: 'cto' as const, family, structure, variant }))

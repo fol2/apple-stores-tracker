@@ -1,4 +1,4 @@
-import { CATEGORIES, FAMILIES } from '../shared/families'
+import { CATEGORIES, familiesOf } from '../shared/families'
 import { BASE_CURRENCY, MARKETS, REFURB_MARKET } from '../shared/markets'
 import { REFUND_POLICIES } from '../shared/refunds'
 import { handleMcp } from './mcp'
@@ -79,7 +79,7 @@ export default {
           baseCurrency: BASE_CURRENCY,
           markets: MARKETS,
           categories: CATEGORIES,
-          families: FAMILIES,
+          families: familiesOf(snapshot),
           refunds: REFUND_POLICIES,
           fx,
           refurb,

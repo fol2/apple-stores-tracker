@@ -65,6 +65,7 @@ const snapshot = {
   markets: local.markets,
   offers,
   errors: local.errors,
+  ...(local.families ? { families: local.families } : {}),
 }
 
 // ---------------------------------------------------------------- guard

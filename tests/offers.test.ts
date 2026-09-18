@@ -72,6 +72,28 @@ describe('what the snapshot stores', () => {
     expect(back.sourceUrl).toBe('')
     expect(back.configKey).toBe(hydrateOffers(packOffers(offers))[0].configKey)
   })
+
+  it('rebuilds a source URL for a family that only exists on the snapshot', () => {
+    const family = {
+      id: 'iphone-duo',
+      categoryId: 'iphone',
+      name: 'iPhone Duo',
+      route: '/shop/buy-iphone/iphone-duo',
+      educationPricing: false as const,
+    }
+    const stored = {
+      marketId: 'uk',
+      familyId: 'iphone-duo',
+      store: 'retail' as const,
+      dimensions: [{ field: 'dimensionCapacity', value: '256gb', label: '256GB' }],
+      amount: 1999,
+      currency: 'GBP',
+      partNumber: null,
+    }
+    const [back] = hydrateOffers([stored], [family])
+    expect(back.sourceUrl).toBe('https://www.apple.com/uk/shop/buy-iphone/iphone-duo')
+    expect(back.configKey).toBe('dimensionCapacity=256gb')
+  })
 })
 
 /**

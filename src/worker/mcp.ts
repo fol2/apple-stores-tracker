@@ -1,4 +1,4 @@
-import { CATEGORIES, FAMILIES } from '../shared/families'
+import { CATEGORIES, familiesOf } from '../shared/families'
 import { MARKETS } from '../shared/markets'
 import { hydrateOffers } from '../shared/offers'
 import type { Offer, Snapshot } from '../shared/types'
@@ -91,16 +91,20 @@ function callTool(name: string, args: Record<string, any>, snapshot: Snapshot | 
   // A snapshot written before education prices existed has no `store`, and the
   // configuration tools filter on it being `retail` — so default it here, the
   // way the browser does at its own boundary.
+  const families = familiesOf(snapshot)
   let hydrated: Offer[] | null = null
   const offers = (): Offer[] =>
-    (hydrated ??= hydrateOffers(snapshot.offers.map((o) => ({ ...o, store: o.store ?? 'retail' }))))
+    (hydrated ??= hydrateOffers(
+      snapshot.offers.map((o) => ({ ...o, store: o.store ?? 'retail' })),
+      families,
+    ))
 
   if (name === 'list_catalog') {
     return {
       collectedAt: snapshot.collectedAt,
       source: 'Apple Online Store',
       categories: CATEGORIES,
-      products: FAMILIES.map((f) => ({ id: f.id, name: f.name, categoryId: f.categoryId })),
+      products: families.map((f) => ({ id: f.id, name: f.name, categoryId: f.categoryId })),
       markets: MARKETS.map((m) => ({ id: m.id, name: m.name, currency: m.currency })),
       offerCount: snapshot.offers.length,
       stores: ['retail', 'education'],

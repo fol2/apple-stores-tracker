@@ -1,4 +1,4 @@
-import { FAMILIES } from './families'
+import { FAMILIES, type Family } from './families'
 import { marketById, storeUrl } from './markets'
 import type { DimensionValue, Offer } from './types'
 
@@ -36,8 +36,8 @@ export const packOffer = (offer: Offer): StoredOffer => {
  * than a wrong one — a stale snapshot outliving a catalogue change should lose
  * a link, not point at a page that never had this configuration on it.
  */
-export function hydrateOffer(stored: StoredOffer): Offer {
-  const family = FAMILIES.find((f) => f.id === stored.familyId)
+export function hydrateOffer(stored: StoredOffer, families: readonly Family[] = FAMILIES): Offer {
+  const family = families.find((f) => f.id === stored.familyId)
   const market = marketById(stored.marketId)
   return {
     ...stored,
@@ -47,7 +47,10 @@ export function hydrateOffer(stored: StoredOffer): Offer {
 }
 
 export const packOffers = (offers: Offer[]): StoredOffer[] => offers.map(packOffer)
-export const hydrateOffers = (stored: StoredOffer[]): Offer[] => stored.map(hydrateOffer)
+export const hydrateOffers = (
+  stored: StoredOffer[],
+  families: readonly Family[] = FAMILIES,
+): Offer[] => stored.map((offer) => hydrateOffer(offer, families))
 
 /** The least an offer has to be for its configuration to be collapsible. */
 interface Priced {

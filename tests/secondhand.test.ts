@@ -263,10 +263,37 @@ describe('secondHandFor', () => {
   /** It must never reach forward, only back. */
   it('will not offer a later generation as the earlier one', () => {
     const fifteen = offer('iphone-15', [['dimensionCapacity', '128gb']])
-    expect(secondHandFor(fifteen, listings)).toEqual({
-      thisGeneration: null,
-      earlierGeneration: null,
-    })
+    const { thisGeneration, earlierGeneration } = secondHandFor(fifteen, listings)
+
+    expect(thisGeneration!.listings.every((l) => l.model === 'iphone15')).toBe(true)
+    expect(earlierGeneration).toBeNull()
+    expect(thisGeneration!.listings.some((l) => l.model.includes('iphone16'))).toBe(false)
+  })
+
+  it('matches a newly numbered iPhone without a hardcoded generation row', () => {
+    const eighteen = offer('iphone-18', [['dimensionCapacity', '128gb']])
+    const { thisGeneration, earlierGeneration } = secondHandFor(eighteen, listings)
+
+    expect(thisGeneration).toBeNull()
+    expect(new Set(earlierGeneration!.listings.map((l) => l.model))).toEqual(new Set(['iphone16']))
+  })
+
+  it('derives a Pro suffix from the family id the same way', () => {
+    const pro = {
+      partNumber: 'X17PRO/A',
+      title: 'Refurbished iPhone 17 Pro 128GB - Black (SIM Free)',
+      model: 'iphone17pro',
+      category: 'iphone' as const,
+      dimensions: { refurbClearModel: 'iphone17pro', dimensionCapacity: '128gb' },
+      amount: 899,
+      currency: 'GBP',
+      sourceUrl: 'https://www.apple.com/uk/shop/product/x17pro/a',
+    }
+    const eighteenPro = offer('iphone-18-pro', [['dimensionCapacity', '128gb']])
+    const { thisGeneration, earlierGeneration } = secondHandFor(eighteenPro, [...listings, pro])
+
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['iphone17pro'])
   })
 
   /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { handleMcp } from '../src/worker/mcp'
+import { FAMILIES } from '../src/shared/families'
 import type { Offer, Snapshot } from '../src/shared/types'
 
 const offer = (marketId: string, currency: string, amount: number): Offer => ({
@@ -86,6 +87,29 @@ describe('MCP tools', () => {
     )
     expect(result.collectedAt).toBe(snapshot.collectedAt)
     expect(result.offerCount).toBe(3)
+    expect(result.products.map((p: { id: string }) => p.id)).toEqual(FAMILIES.map((f) => f.id))
+  })
+
+  it('lists a discovered family that the compile-time table does not name', async () => {
+    const result = toolResult(
+      await call(
+        { jsonrpc: '2.0', id: 41, method: 'tools/call', params: { name: 'list_catalog' } },
+        {
+          ...snapshot,
+          families: [
+            {
+              id: 'iphone-18-pro',
+              categoryId: 'iphone',
+              name: 'iPhone 18 Pro',
+              route: '/shop/buy-iphone/iphone-18-pro',
+              educationPricing: false,
+            },
+          ],
+        },
+      ),
+    )
+    expect(result.products).toEqual([{ id: 'iphone-18-pro', name: 'iPhone 18 Pro', categoryId: 'iphone' }])
+    expect(FAMILIES.map((f) => f.id)).not.toContain('iphone-18-pro')
   })
 
   it('deduplicates configurations across markets', async () => {

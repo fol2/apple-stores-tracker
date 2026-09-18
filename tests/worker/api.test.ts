@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import worker from '../../src/worker/index'
 import type { Env } from '../../src/worker/store'
+import { FAMILIES } from '../../src/shared/families'
 import type { Offer, RefurbListing, Snapshot } from '../../src/shared/types'
 
 const offer: Offer = {
@@ -94,6 +95,38 @@ describe('GET /api/status', () => {
 
     expect(body.secondHand).toEqual({ market: 'uk', readAt: '2026-08-27T18:00:00.000Z' })
     expect(body.rates.quotedAt).toBe('2026-08-27T00:02:31.000Z')
+  })
+})
+
+describe('GET /api/snapshot families', () => {
+  const duo = {
+    id: 'iphone-duo',
+    categoryId: 'iphone',
+    name: 'iPhone Duo',
+    route: '/shop/buy-iphone/iphone-duo',
+    educationPricing: false as const,
+  }
+
+  it('serves families stored on the snapshot, including a model the compile-time table does not name', async () => {
+    const withFamilies = {
+      PRICES: {
+        get: async (key: string) =>
+          key === 'snapshot:latest' ? { ...snapshot, families: [duo] } : stored[key] ?? null,
+        put: async () => {},
+      },
+    } as unknown as Env
+    const body: any = await worker
+      .fetch(new Request('https://example.com/api/snapshot'), withFamilies, ctx)
+      .then((r) => r.json())
+
+    expect(body.families).toEqual([duo])
+    expect(FAMILIES.map((f) => f.id)).not.toContain('iphone-duo')
+  })
+
+  it('falls back to the compile-time table when a snapshot predates a stored family list', async () => {
+    const body: any = await get('/api/snapshot')
+    expect(body.families).toEqual(FAMILIES)
+    expect(body.families.some((f: { id: string }) => f.id === 'iphone-17-pro')).toBe(true)
   })
 })
 

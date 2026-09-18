@@ -43,7 +43,10 @@ export async function loadSnapshot(): Promise<SnapshotResponse> {
     // app. A snapshot collected before education prices existed also has no
     // `store`; defaulting it in the same pass keeps a stale snapshot rendering
     // instead of filtering every offer out and leaving the page on "Loading".
-    offers: hydrateOffers(data.offers.map((o) => ({ ...o, store: o.store ?? 'retail' }))),
+    offers: hydrateOffers(
+      data.offers.map((o) => ({ ...o, store: o.store ?? 'retail' })),
+      data.families,
+    ),
   }
 }
 

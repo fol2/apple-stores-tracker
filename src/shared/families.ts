@@ -30,13 +30,36 @@ export const CATEGORIES: Category[] = [
 ]
 
 /**
- * Apple's buy-flow routes. When Apple retires or adds a product this list is
- * the only thing that needs editing; a route that 404s is reported as a
- * per-family collection error rather than failing the sweep.
+ * Pages that list a category's current buy-flow families. None of these
+ * embed a generation number. A shop index that 404s (`/shop/buy-airpods`)
+ * falls through to the marketing page for that category.
  */
+export const CATEGORY_INDEXES: { categoryId: string; routes: string[] }[] = [
+  { categoryId: 'mac', routes: ['/shop/buy-mac'] },
+  { categoryId: 'ipad', routes: ['/shop/buy-ipad'] },
+  { categoryId: 'iphone', routes: ['/shop/buy-iphone'] },
+  { categoryId: 'watch', routes: ['/shop/buy-watch'] },
+  { categoryId: 'vision', routes: ['/shop/buy-vision'] },
+  { categoryId: 'airpods', routes: ['/shop/buy-airpods', '/airpods/'] },
+  { categoryId: 'tv-home', routes: ['/shop/buy-tv', '/tv-home/'] },
+]
+
 export const hasEducationPricing = (family: Family): boolean =>
   family.educationPricing !== false
 
+/**
+ * Families stored on a snapshot, or this compile-time table when the
+ * snapshot predates a stored list. Live collection reads Apple's listing,
+ * not this table.
+ */
+export const familiesOf = (snapshot: { families?: Family[] } | null | undefined): Family[] =>
+  snapshot?.families ?? FAMILIES
+
+/**
+ * Last-known families. Used when a snapshot has no stored list, and as a
+ * per-category fallback if every listing page for that category fails.
+ * A route that 404s is still a per-family collection error.
+ */
 export const FAMILIES: Family[] = [
   { id: 'macbook-neo', categoryId: 'mac', name: 'MacBook Neo', route: '/shop/buy-mac/macbook-neo' },
   { id: 'macbook-air', categoryId: 'mac', name: 'MacBook Air', route: '/shop/buy-mac/macbook-air' },

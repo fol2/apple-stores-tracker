@@ -1,3 +1,4 @@
+import type { Family } from './families'
 import type { StoredOffer } from './offers'
 
 /** A single selectable hardware option, e.g. memory 24GB. */
@@ -63,6 +64,12 @@ export interface Snapshot {
    * snapshots written before education prices existed.
    */
   errors: { marketId: string; familyId: string; store?: 'retail' | 'education'; message: string }[]
+  /**
+   * Buy-flow families this collection discovered. Absent on snapshots
+   * written before listing discovery, which fall back to the compile-time
+   * table.
+   */
+  families?: Family[]
 }
 
 /** Base-currency conversion rates, keyed by the market's currency. */

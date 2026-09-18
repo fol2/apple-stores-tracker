@@ -63,10 +63,6 @@ const REFURB_MODELS: Record<string, FamilyGrid> = {
   // beside "(A16)". Two numberings that cannot be ordered against each other,
   // so this family claims no generation rather than guess one. Same for the TV.
   ipad: { category: 'ipad', model: /^ipad(?:\d{4})?$/ },
-  'iphone-17': { category: 'iphone', model: /^iphone17$/, lineage: /^iphone\d+$/, generationInToken: true },
-  'iphone-17-pro': { category: 'iphone', model: /^iphone17pro/, lineage: /^iphone\d+pro/, generationInToken: true },
-  'iphone-17e': { category: 'iphone', model: /^iphone17e$/, lineage: /^iphone\d+e$/, generationInToken: true },
-  'iphone-16': { category: 'iphone', model: /^iphone16$/, lineage: /^iphone\d+$/, generationInToken: true },
   'iphone-air': { category: 'iphone', model: /^iphoneair/ },
   // `watchse` alone would also match `watchseries10`, so the SE needs its digit.
   'apple-watch': { category: 'watch', model: /^watchseries/, generation: { now: 11, from: 'token' } },
@@ -87,8 +83,33 @@ const REFURB_MODELS: Record<string, FamilyGrid> = {
  * as "none matching this configuration" invites the reader to go looking for a
  * configuration that would match, and there is none.
  */
+/**
+ * Numbered iPhone families (`iphone-18-pro`, `iphone-17e`) share one grid
+ * shape: the generation is in the token. Derived from the family id so a
+ * newly listed generation matches without a table row.
+ */
+function numberedIphoneGrid(familyId: string): FamilyGrid | undefined {
+  const match = /^iphone-(\d+)(|-pro|-e)$/.exec(familyId)
+  if (!match) return undefined
+  const [, generation, rest] = match
+  const suffix = rest.slice(1)
+  const token = `iphone${generation}${suffix}`
+  if (suffix === 'pro') {
+    return { category: 'iphone', model: new RegExp(`^${token}`), lineage: /^iphone\d+pro/, generationInToken: true }
+  }
+  return {
+    category: 'iphone',
+    model: new RegExp(`^${token}$`),
+    lineage: new RegExp(`^iphone\\d+${suffix}$`),
+    generationInToken: true,
+  }
+}
+
+const gridFor = (familyId: string): FamilyGrid | undefined =>
+  REFURB_MODELS[familyId] ?? numberedIphoneGrid(familyId)
+
 export const refurbStockFor = (familyId: string, listings: RefurbListing[]): number => {
-  const family = REFURB_MODELS[familyId]
+  const family = gridFor(familyId)
   if (!family) return 0
   const line = family.lineage ?? family.model
   return listings.filter((listing) => line.test(listing.model)).length
@@ -96,7 +117,7 @@ export const refurbStockFor = (familyId: string, listings: RefurbListing[]): num
 
 /** The grid a family's units would appear in, if Apple refurbishes it at all. */
 export const refurbCategoryFor = (familyId: string): RefurbCategory | null =>
-  REFURB_MODELS[familyId]?.category ?? null
+  gridFor(familyId)?.category ?? null
 
 /**
  * Our dimension fields carry the selector section they came from
@@ -327,7 +348,7 @@ export interface SecondHandComparison {
  * it.
  */
 export function secondHandFor(offer: Offer, listings: RefurbListing[]): SecondHandComparison {
-  const family = REFURB_MODELS[offer.familyId]
+  const family = gridFor(offer.familyId)
   if (!family) return { thisGeneration: null, earlierGeneration: null }
 
   const line = family.lineage ?? family.model

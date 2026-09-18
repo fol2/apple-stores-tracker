@@ -9,8 +9,8 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { MARKETS, STORES } from '../src/shared/markets'
-import { FAMILIES, hasEducationPricing } from '../src/shared/families'
-import { collectFamilies, discoverStructures, RequestBudget } from '../src/scrape/sweep'
+import { hasEducationPricing } from '../src/shared/families'
+import { collectFamilies, discoverFamilies, discoverStructures, RequestBudget } from '../src/scrape/sweep'
 import { collapseUnpaidDimensions } from '../src/shared/offers'
 import { fetchFxRates } from '../src/scrape/fx'
 import type { Offer } from '../src/shared/types'
@@ -22,8 +22,10 @@ const markets = wanted.length ? MARKETS.filter((m) => wanted.includes(m.id)) : M
 const budget = new RequestBudget(100_000)
 
 console.log(`Discovering catalogue from ${MARKETS[0].name} ...`)
-const structures = await discoverStructures(MARKETS[0], budget)
-console.log(`  ${structures.structures.length} families, ${structures.errors.length} failed`)
+const listing = await discoverFamilies(MARKETS[0], budget)
+console.log(`  ${listing.families.length} families: ${listing.families.map((f) => f.id).join(', ')}`)
+const structures = await discoverStructures(MARKETS[0], budget, listing.families)
+console.log(`  ${structures.structures.length} structures, ${structures.errors.length} failed`)
 for (const e of structures.errors) console.log(`  ! ${e.familyId}: ${e.message}`)
 
 const offers: Offer[] = []
@@ -33,11 +35,11 @@ for (const market of markets) {
     const wanted =
       store === 'education'
         ? structures.structures.filter((s) => {
-            const family = FAMILIES.find((f) => f.id === s.familyId)
+            const family = listing.families.find((f) => f.id === s.familyId)
             return !family || hasEducationPricing(family)
           })
         : structures.structures
-    const collection = await collectFamilies(market, store, wanted, budget)
+    const collection = await collectFamilies(market, store, wanted, budget, listing.families)
     offers.push(...collection.offers)
     errors.push(...collection.errors)
     console.log(
@@ -72,6 +74,7 @@ writeFileSync(
     {
       collectedAt: new Date().toISOString(),
       markets: markets.map((m) => m.id),
+      families: listing.families,
       offers: priced,
       errors,
       fx,
