@@ -89,10 +89,12 @@ const REFURB_MODELS: Record<string, FamilyGrid> = {
  * newly listed generation matches without a table row.
  */
 function numberedIphoneGrid(familyId: string): FamilyGrid | undefined {
-  const match = /^iphone-(\d+)(|-pro|-e)$/.exec(familyId)
+  // Live ids are `iphone-17e` (no hyphen before e) and `iphone-18-pro`.
+  const match = /^iphone-(\d+)(.*)$/.exec(familyId)
   if (!match) return undefined
   const [, generation, rest] = match
-  const suffix = rest.slice(1)
+  if (rest !== '' && rest !== '-pro' && rest !== 'e' && rest !== '-e') return undefined
+  const suffix = rest.replace(/^-/, '')
   const token = `iphone${generation}${suffix}`
   if (suffix === 'pro') {
     return { category: 'iphone', model: new RegExp(`^${token}`), lineage: /^iphone\d+pro/, generationInToken: true }

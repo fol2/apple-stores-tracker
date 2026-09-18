@@ -297,6 +297,34 @@ describe('secondHandFor', () => {
   })
 
   /**
+   * Apple's buy-flow id is `iphone-17e`, not `iphone-17-e`. A pattern that
+   * only admits a hyphenated suffix would drop this family from the grid and
+   * the page would claim Apple does not refurbish it.
+   */
+  it('matches an unhyphenated e-suffix iPhone as a refurbished family', () => {
+    expect(refurbCategoryFor('iphone-17e')).toBe('iphone')
+
+    const sixteenE = {
+      partNumber: 'X16E/A',
+      title: 'Refurbished iPhone 16e 128GB - Black (SIM Free)',
+      model: 'iphone16e',
+      category: 'iphone' as const,
+      dimensions: { refurbClearModel: 'iphone16e', dimensionCapacity: '128gb' },
+      amount: 399,
+      currency: 'GBP',
+      sourceUrl: 'https://www.apple.com/uk/shop/product/x16e/a',
+    }
+    const { thisGeneration, earlierGeneration } = secondHandFor(
+      offer('iphone-17e', [['dimensionCapacity', '128gb']]),
+      [...listings, sixteenE],
+    )
+
+    expect(thisGeneration).toBeNull()
+    expect(earlierGeneration!.listings.map((l) => l.model)).toEqual(['iphone16e'])
+    expect(earlierGeneration!.listings.some((l) => l.model === 'iphone16')).toBe(false)
+  })
+
+  /**
    * Both answers at once, which is the point of asking them separately: this
    * model used, and last year's used, so the reader can weigh one against the
    * other rather than being handed whichever happened to be in stock.
